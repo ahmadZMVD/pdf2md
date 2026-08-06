@@ -1,0 +1,19 @@
+# Node/Vite output
+node_modules/
+dist/
+.vite/
+
+# Tauri/Rust output
+src-tauri/target/
+src-tauri/gen/
+
+# Local reports and transient test output
+*.log
+__pycache__/
+.pytest_cache/
+
+# IDE and operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

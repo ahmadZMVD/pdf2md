@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta
+      name="description"
+      content="An offline, lightweight PDF and document to Markdown converter."
+    />
+    <title>PDF &amp; Document Converter</title>
+  </head>
+  <body>
+    <main id="app" class="min-h-screen">
+      <section class="shell flex min-h-screen flex-col px-6 py-6">
+        <header class="flex items-start justify-between gap-4">
+          <div>
+            <p class="eyebrow">Offline workspace</p>
+            <h1 class="mt-2 text-xl font-semibold tracking-tight text-slate-100">
+              PDF &amp; Document Converter
+            </h1>
+          </div>
+          <div id="status-badge" class="status-badge" data-state="idle">
+            <span class="status-dot" aria-hidden="true"></span>
+            <span id="status-label">Ready</span>
+          </div>
+        </header>
+
+        <div class="mt-8 flex flex-1 flex-col justify-between">
+          <section class="space-y-5" aria-labelledby="health-heading">
+            <div>
+              <p class="section-label">System readiness</p>
+              <h2 id="health-heading" class="mt-2 text-3xl font-semibold leading-tight text-slate-50">
+                A quiet, dependable<br />conversion desk.
+              </h2>
+              <p class="mt-4 max-w-[290px] text-sm leading-6 text-slate-400">
+                The native shell is ready to verify the local tools used by the conversion pipeline.
+              </p>
+            </div>
+
+            <div class="health-card" aria-live="polite">
+              <div class="flex items-center justify-between gap-4">
+                <div>
+                  <p class="text-sm font-medium text-slate-100">Environment health</p>
+                  <p id="health-summary" class="mt-1 text-xs leading-5 text-slate-400">
+                    Run a fresh probe when you are ready.
+                  </p>
+                </div>
+                <div id="completion-mark" class="completion-mark" aria-hidden="true">✓</div>
+              </div>
+              <dl id="health-details" class="mt-5 space-y-3"></dl>
+            </div>
+
+            <button id="health-button" class="primary-button" type="button">
+              <span>Check environment</span>
+              <span aria-hidden="true" class="button-arrow">↗</span>
+            </button>
+            <p id="error-message" class="min-h-5 text-xs text-rose-300" role="alert"></p>
+          </section>
+
+          <footer class="mt-10 flex items-center justify-between border-t border-white/10 pt-4 text-[11px] text-slate-500">
+            <span>Phase 1 shell</span>
+            <span class="flex items-center gap-1.5"><span class="footer-dot"></span>Cloud-built native core</span>
+          </footer>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>

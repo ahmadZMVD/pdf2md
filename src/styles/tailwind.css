@@ -1,0 +1,158 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: #0b0d11;
+    color: #f8fafc;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    min-width: 380px;
+    min-height: 520px;
+    margin: 0;
+    overflow: hidden;
+    background: #0b0d11;
+  }
+
+  button,
+  input,
+  textarea,
+  select {
+    font: inherit;
+  }
+}
+
+@layer components {
+  .shell {
+    background:
+      radial-gradient(circle at 100% 0%, rgba(96, 165, 250, 0.12), transparent 34%),
+      linear-gradient(160deg, #12151c 0%, #0b0d11 60%);
+  }
+
+  .eyebrow,
+  .section-label {
+    color: #7dd3fc;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.13em;
+    line-height: 1rem;
+    text-transform: uppercase;
+  }
+
+  .status-badge {
+    align-items: center;
+    background: rgba(148, 163, 184, 0.1);
+    border: 1px solid rgba(148, 163, 184, 0.15);
+    border-radius: 999px;
+    color: #94a3b8;
+    display: inline-flex;
+    flex-shrink: 0;
+    font-size: 0.68rem;
+    font-weight: 600;
+    gap: 0.45rem;
+    padding: 0.38rem 0.65rem;
+  }
+
+  .status-badge[data-state="success"] { color: #86efac; }
+  .status-badge[data-state="warning"] { color: #fde68a; }
+  .status-badge[data-state="working"] { color: #7dd3fc; }
+  .status-badge[data-state="error"] { color: #fda4af; }
+
+  .status-dot,
+  .footer-dot {
+    background: currentColor;
+    border-radius: 999px;
+    display: inline-block;
+    height: 0.38rem;
+    width: 0.38rem;
+  }
+
+  .status-badge[data-state="working"] .status-dot {
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+
+  .health-card {
+    background: rgba(30, 41, 59, 0.58);
+    border: 1px solid rgba(148, 163, 184, 0.13);
+    border-radius: 1rem;
+    box-shadow: 0 1.5rem 3rem rgba(0, 0, 0, 0.18);
+    padding: 1.1rem;
+  }
+
+  .health-row {
+    align-items: center;
+    border-top: 1px solid rgba(148, 163, 184, 0.1);
+    display: flex;
+    font-size: 0.75rem;
+    justify-content: space-between;
+    padding-top: 0.7rem;
+  }
+
+  .health-row dt { color: #94a3b8; }
+  .health-row dd { margin: 0; }
+  .health-value { font-weight: 600; }
+  .health-value.is-ready { color: #86efac; }
+  .health-value.is-missing { color: #fda4af; }
+
+  .completion-mark {
+    align-items: center;
+    background: rgba(134, 239, 172, 0.12);
+    border: 1px solid rgba(134, 239, 172, 0.25);
+    border-radius: 999px;
+    color: #86efac;
+    display: flex;
+    font-size: 0.9rem;
+    height: 2rem;
+    justify-content: center;
+    opacity: 0;
+    transform: scale(0.72);
+    width: 2rem;
+  }
+
+  .completion-mark.is-visible {
+    animation: checkmark-in 360ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  }
+
+  .primary-button {
+    align-items: center;
+    background: #e0f2fe;
+    border: 0;
+    border-radius: 0.85rem;
+    color: #0c1928;
+    cursor: pointer;
+    display: flex;
+    font-size: 0.8rem;
+    font-weight: 700;
+    justify-content: space-between;
+    padding: 0.85rem 1rem;
+    transition: background 160ms ease, transform 160ms ease, opacity 160ms ease;
+    width: 100%;
+  }
+
+  .primary-button:hover { background: #bae6fd; transform: translateY(-1px); }
+  .primary-button:active { transform: translateY(0); }
+  .primary-button:disabled { cursor: wait; opacity: 0.65; }
+  .primary-button.is-loading .button-arrow { animation: arrow-spin 900ms linear infinite; }
+}
+
+@keyframes pulse {
+  50% { opacity: 0.35; transform: scale(0.7); }
+}
+
+@keyframes checkmark-in {
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes arrow-spin {
+  to { transform: rotate(360deg); }
+}
