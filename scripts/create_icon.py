@@ -78,7 +78,7 @@ def png_bytes() -> bytes:
 
 def ico_bytes() -> bytes:
     image = png_bytes()
-    directory = struct.pack("<HH", 0, 1)
+    directory = struct.pack("<HHH", 0, 1, 1)
     directory += struct.pack("<BBBBHHII", 0, 0, 0, 0, 1, 32, len(image), 22)
     return directory + image
 
