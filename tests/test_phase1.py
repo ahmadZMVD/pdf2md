@@ -82,6 +82,15 @@ class Phase1Tests(unittest.TestCase):
         self.assertIn("actions/setup-node@v4", step_uses)
         self.assertIn("dtolnay/rust-toolchain@stable", step_uses)
         self.assertIn("actions/upload-artifact@v4", step_uses)
+        rust_test_steps = [
+            step.get("run")
+            for step in job["steps"]
+            if isinstance(step, dict) and step.get("name") == "Run native Rust tests"
+        ]
+        self.assertEqual(
+            rust_test_steps,
+            ["cargo test --manifest-path src-tauri/Cargo.toml --lib"],
+        )
         upload_step = next(
             step for step in job["steps"] if step.get("uses") == "actions/upload-artifact@v4"
         )

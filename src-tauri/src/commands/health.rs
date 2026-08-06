@@ -179,3 +179,25 @@ pub fn check_system_health() -> SystemHealth {
         .to_owned(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{first_line, run_probe};
+
+    #[test]
+    fn first_line_discards_empty_prefix_and_following_lines() {
+        assert_eq!(first_line("\n  first result  \nsecond result"), "first result");
+    }
+
+    #[test]
+    fn subprocess_probe_executes_a_real_bounded_process() {
+        let result = if cfg!(target_os = "windows") {
+            run_probe("cmd.exe", &["/C", "echo phase1-health-probe"])
+        } else {
+            run_probe("sh", &["-c", "printf phase1-health-probe"])
+        };
+
+        assert!(result.success);
+        assert_eq!(first_line(&result.output), "phase1-health-probe");
+    }
+}
