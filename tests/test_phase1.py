@@ -55,12 +55,17 @@ class Phase1Tests(unittest.TestCase):
             "src/index.html",
             "src/main.js",
             "src/styles/tailwind.css",
+            "src-tauri/icons/icon.ico",
             "src-tauri/src/main.rs",
             "src-tauri/src/lib.rs",
             "src-tauri/src/commands/health.rs",
             "src-tauri/Cargo.toml",
         ):
             self.assertTrue((ROOT / relative_path).is_file(), relative_path)
+
+        icon_header = (ROOT / "src-tauri" / "icons" / "icon.ico").read_bytes()
+        self.assertEqual(icon_header[:4], b"\x00\x00\x01\x00")
+        self.assertEqual(int.from_bytes(icon_header[4:6], "little"), 1)
 
     def test_workflow_yaml_is_structurally_valid(self) -> None:
         workflow = yaml.safe_load(
