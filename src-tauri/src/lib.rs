@@ -18,7 +18,7 @@ pub fn run() {
 
             TrayIconBuilder::with_id("main-tray")
                 .menu(&menu)
-                .menu_on_left_click(false)
+                .show_menu_on_left_click(false)
                 .tooltip("PDF & Document Converter")
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => {

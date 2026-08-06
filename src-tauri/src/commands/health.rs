@@ -95,7 +95,12 @@ fn format_output(output: Output) -> String {
 }
 
 fn first_line(value: &str) -> String {
-    value.lines().next().unwrap_or_default().trim().to_owned()
+    value
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty())
+        .unwrap_or_default()
+        .to_owned()
 }
 
 fn probe_python() -> (bool, String, bool, String) {
