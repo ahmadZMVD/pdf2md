@@ -85,7 +85,8 @@ jobs:
       - name: Report Rust cache result
         shell: pwsh
         run: |
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ("- Rust cache hit: `{0}`" -f "${{ steps.rust-cache.outputs.cache-hit }}")
+          "- Rust cache hit: ${{ steps.rust-cache.outputs.cache-hit }}" |
+            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
       - name: Install frontend dependencies
         run: npm ci
