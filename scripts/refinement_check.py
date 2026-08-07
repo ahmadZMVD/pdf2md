@@ -78,7 +78,17 @@ def test_workflow_contract() -> None:
     require(cache_step["with"]["shared-key"] == "tauri-v2-windows-release-v2", "cache namespace must be stable")
     require(cache_step["with"]["cache-on-failure"] is False, "failed native runs must not poison the exact cache key")
     require(cache_step["id"] == "rust-cache", "cache result must be addressable")
-    require(any(step.get("name") == "Report Rust cache result" for step in build_steps), "cache result must be reported")
+    require(any(step.get("name") == "Report cache results" for step in build_steps), "cache results must be reported")
+
+    bundler_index = next(i for i, step in enumerate(build_steps) if step.get("uses") == "actions/cache@v4")
+    bundler_step = build_steps[bundler_index]
+    require(bundler_step["with"]["path"] == "${{ env.LOCALAPPDATA }}\\tauri", "NSIS bundler tools must be cached")
+    require(bundler_step["id"] == "bundler-cache", "bundler cache result must be addressable")
+    require(any("bundler-cache.outputs.cache-hit" in json.dumps(step) for step in build_steps), "bundler cache hit must be reported")
+
+    configuration = json.loads((ROOT / "src-tauri" / "tauri.conf.json").read_text(encoding="utf-8"))
+    nsis = configuration["bundle"]["windows"]["nsis"]
+    require(nsis["compression"] == "zlib", "NSIS must use fast zlib compression to keep CI under budget")
 
     release_steps = release["steps"]
     download_step = next(step for step in release_steps if step.get("uses") == "actions/download-artifact@v4")
