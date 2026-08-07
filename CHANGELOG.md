@@ -10,7 +10,8 @@ and releases use semantic versioning.
 ### Changed
 
 - Warm Rust cache reuse verified across consecutive Windows CI runs.
-- Release compilation switched to parallel ThinLTO to keep incremental builds fast.
+- Release compilation switched to parallel no-LTO codegen for the fastest CI links.
+- Tauri bundler tools cached and NSIS compression set to fast zlib.
 
 ### Added
 
