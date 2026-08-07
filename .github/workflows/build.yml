@@ -79,8 +79,8 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri -> target
-          shared-key: tauri-v2-windows-release
-          cache-on-failure: true
+          shared-key: tauri-v2-windows-release-v2
+          cache-on-failure: false
 
       - name: Report Rust cache result
         shell: pwsh

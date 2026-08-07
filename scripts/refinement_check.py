@@ -74,8 +74,8 @@ def test_workflow_contract() -> None:
     require(lock_index < cache_index, "Cargo.lock must exist before cache key evaluation")
     cache_step = build_steps[cache_index]
     require(cache_step["with"]["workspaces"] == "src-tauri -> target", "Tauri target directory must be cached")
-    require(cache_step["with"]["shared-key"] == "tauri-v2-windows-release", "cache namespace must be stable")
-    require(cache_step["with"]["cache-on-failure"] is True, "failed native runs must preserve useful crate layers")
+    require(cache_step["with"]["shared-key"] == "tauri-v2-windows-release-v2", "cache namespace must be stable")
+    require(cache_step["with"]["cache-on-failure"] is False, "failed native runs must not poison the exact cache key")
     require(cache_step["id"] == "rust-cache", "cache result must be addressable")
     require(any(step.get("name") == "Report Rust cache result" for step in build_steps), "cache result must be reported")
 
