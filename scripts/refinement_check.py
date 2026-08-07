@@ -53,7 +53,7 @@ def test_workflow_contract() -> None:
     build = workflow["jobs"]["build-windows"]
     require(quality["runs-on"] == "ubuntu-latest", "quality job must use the lightweight runner")
     require(build["runs-on"] == "windows-latest", "native job must use the Windows runner")
-    require(build["needs"] == "quality", "native build must be gated by quality")
+    require("needs" not in build, "native build must run in parallel with quality to stay under the CI budget")
     require(workflow["permissions"]["contents"] == "read", "workflow default permission must be read-only")
     release = workflow["jobs"]["release"]
     require(release["needs"] == "build-windows", "release must consume the verified build")
