@@ -7,6 +7,11 @@ and releases use semantic versioning.
 
 ## [Unreleased]
 
+### Changed
+
+- Warm Rust cache reuse verified across consecutive Windows CI runs.
+- Release compilation switched to parallel ThinLTO to keep incremental builds fast.
+
 ### Added
 
 - Browser-safe IPC adapter with deterministic healthcheck mocks.
