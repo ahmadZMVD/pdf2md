@@ -19,6 +19,6 @@ tauri = { version = "2", features = ["tray-icon"] }
 
 [profile.release]
 codegen-units = 16
-lto = "thin"
+lto = false
 panic = "abort"
 strip = true

@@ -99,7 +99,7 @@ def test_workflow_contract() -> None:
 
     cargo = tomllib.loads((ROOT / "src-tauri" / "Cargo.toml").read_text(encoding="utf-8"))
     release_profile = cargo["profile"]["release"]
-    require(release_profile["lto"] == "thin", "release builds must use CI-efficient ThinLTO")
+    require(release_profile["lto"] is False, "release builds must link without cross-crate LTO for CI speed")
     require(release_profile["codegen-units"] == 16, "release code generation must remain parallel")
     require(release_profile["panic"] == "abort", "release panic handling changed")
     require(release_profile["strip"] is True, "release binaries must remain stripped")
