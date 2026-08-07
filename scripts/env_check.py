@@ -22,7 +22,9 @@ ROOT = Path(__file__).resolve().parents[1]
 COMMAND_TIMEOUT_SECONDS = 15
 
 
-def run_command(command: Sequence[str]) -> dict[str, Any]:
+def run_command(
+    command: Sequence[str], timeout_seconds: int = COMMAND_TIMEOUT_SECONDS
+) -> dict[str, Any]:
     """Run a bounded probe and return machine-readable process details."""
 
     invocation = list(command)
@@ -36,7 +38,7 @@ def run_command(command: Sequence[str]) -> dict[str, Any]:
             cwd=ROOT,
             capture_output=True,
             text=True,
-            timeout=COMMAND_TIMEOUT_SECONDS,
+            timeout=timeout_seconds,
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as error:

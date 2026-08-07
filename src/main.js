@@ -1,5 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
-import "./styles/tailwind.css";
+import { invokeCommand, isNativeTauri } from "./services/ipc.js";
 
 const button = document.querySelector("#health-button");
 const statusBadge = document.querySelector("#status-badge");
@@ -58,7 +57,7 @@ async function checkEnvironment() {
   errorMessage.textContent = "";
 
   try {
-    const health = await invoke("check_system_health");
+    const health = await invokeCommand("check_system_health");
     renderHealth(health);
   } catch (error) {
     setStatus("error", "Unavailable");
@@ -72,9 +71,9 @@ async function checkEnvironment() {
 
 button.addEventListener("click", checkEnvironment);
 
-if (window.__TAURI_INTERNALS__) {
+if (isNativeTauri()) {
   checkEnvironment();
 } else {
   setStatus("idle", "Preview");
-  healthSummary.textContent = "Open the desktop build to run the native probe.";
+  healthSummary.textContent = "Browser preview uses a local IPC mock.";
 }

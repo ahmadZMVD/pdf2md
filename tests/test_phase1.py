@@ -47,10 +47,13 @@ class Phase1Tests(unittest.TestCase):
         window = configuration["app"]["windows"][0]
         self.assertEqual(window["width"], 380)
         self.assertEqual(window["height"], 520)
+        self.assertEqual(window["title"], "PDF & Document Converter")
         self.assertFalse(window["resizable"])
         self.assertFalse(window["fullscreen"])
+        self.assertTrue(window["decorations"])
         self.assertEqual(window["theme"], "Dark")
         self.assertEqual(window["label"], "main")
+        self.assertTrue(configuration["app"]["withGlobalTauri"])
         for relative_path in (
             "src/index.html",
             "src/main.js",
@@ -89,7 +92,7 @@ class Phase1Tests(unittest.TestCase):
         ]
         self.assertEqual(
             rust_test_steps,
-            ["cargo test --manifest-path src-tauri/Cargo.toml --lib"],
+            ["cargo test --manifest-path src-tauri/Cargo.toml --lib --release"],
         )
         upload_step = next(
             step for step in job["steps"] if step.get("uses") == "actions/upload-artifact@v4"

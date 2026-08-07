@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
+    "test:frontend": "node tests/test_ipc_adapter.mjs",
+    "test:refinement": "python scripts/refinement_check.py",
     "preview": "vite preview",
     "tauri": "tauri"
   },
