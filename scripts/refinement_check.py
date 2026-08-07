@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import tomllib
 from pathlib import Path
 from typing import Callable
 
@@ -85,6 +86,13 @@ def test_workflow_contract() -> None:
     release_step = next(step for step in release_steps if step.get("uses") == "softprops/action-gh-release@v2")
     require("*.exe" in release_step["with"]["files"], "release must attach the Windows executable")
     require(not any("create_icon.py" in json.dumps(step) for step in build_steps), "CI must use the committed icon")
+
+    cargo = tomllib.loads((ROOT / "src-tauri" / "Cargo.toml").read_text(encoding="utf-8"))
+    release_profile = cargo["profile"]["release"]
+    require(release_profile["lto"] == "thin", "release builds must use CI-efficient ThinLTO")
+    require(release_profile["codegen-units"] == 16, "release code generation must remain parallel")
+    require(release_profile["panic"] == "abort", "release panic handling changed")
+    require(release_profile["strip"] is True, "release binaries must remain stripped")
 
 
 def test_pre_push_gate_executes() -> None:
