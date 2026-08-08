@@ -1,0 +1,8 @@
+Plain Text Fixture
+==================
+
+Pandoc reads this file as markdown-ish text and emits GFM.
+
+Formula line: $a2 + b2 = c2$
+LaTeX block: $$\int_0\infty e{-t} dt = 1$$
+Special characters: em dash, ellipsis, and full coverage.

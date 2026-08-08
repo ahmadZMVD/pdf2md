@@ -32,8 +32,8 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Python test dependency
-        run: python -m pip install --disable-pip-version-check pyyaml
+      - name: Install Python conversion test dependencies
+        run: python -m pip install --disable-pip-version-check pyyaml pymupdf4llm
 
       - name: Install frontend dependencies
         run: npm ci

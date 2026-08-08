@@ -1,5 +1,12 @@
 import assert from "node:assert/strict";
-import { invokeCommand, isNativeTauri, mockResponse } from "../src/services/ipc.js";
+import {
+  cancelBatch,
+  getQueueStatus,
+  invokeCommand,
+  isNativeTauri,
+  mockResponse,
+  startConversionBatch,
+} from "../src/services/ipc.js";
 
 const originalWindow = globalThis.window;
 const originalInfo = console.info;
@@ -13,38 +20,59 @@ try {
   const browserHealth = await invokeCommand("check_system_health");
   assert.equal(browserHealth.status, "ok");
   assert.equal(browserHealth.os, "browser");
-  assert.equal(browserHealth.local_environment.python_available, true);
-  assert.equal(logEntries.length, 1);
+  browserHealth.local_environment.python_available = false;
+  assert.equal((await invokeCommand("check_system_health")).local_environment.python_available, true);
+
+  const initialQueue = await startConversionBatch({
+    files: ["C:/input/report.pdf", "C:/input/report.docx", "C:/input/photo.jpg"],
+    outputDirectory: "C:/output",
+  });
+  assert.deepEqual(
+    initialQueue.items.map((item) => item.outputPath),
+    ["C:/output/report.md", "C:/output/report_1.md", "C:/output/photo.md"],
+  );
+  assert.equal(initialQueue.status, "running");
+  assert.equal(initialQueue.completed, 0);
+  assert.equal((await getQueueStatus()).batchId, initialQueue.batchId);
+
+  const cancelledQueue = await cancelBatch();
+  assert.equal(cancelledQueue.status, "cancelled");
+  assert.equal(cancelledQueue.cancelRequested, true);
+  assert.equal(cancelledQueue.completed, 3);
+  assert.deepEqual(cancelledQueue.items.map((item) => item.status), ["cancelled", "cancelled", "cancelled"]);
+  assert.throws(() => startConversionBatch({ files: [], outputDirectory: "C:/output" }), /at least one file/);
+  assert.equal(logEntries.length, 5);
   assert.equal(logEntries[0][0], "[Mock IPC Call]");
 
-  browserHealth.local_environment.python_available = false;
-  const freshBrowserHealth = await invokeCommand("check_system_health");
-  assert.equal(freshBrowserHealth.local_environment.python_available, true);
-
-  const futureResponse = await invokeCommand("future_command", { dry_run: true });
+  const futureResponse = await invokeCommand("future_command", { dryRun: true });
   assert.deepEqual(futureResponse, {
     status: "ok",
     mock: true,
     command: "future_command",
-    payload: { dry_run: true },
+    payload: { dryRun: true },
     build_architecture: "browser_mock_tauri_v2",
   });
 
-  let received;
+  const calls = [];
   globalThis.window = {
     __TAURI__: {
       core: {
         invoke: async (...args) => {
-          received = args;
+          calls.push(args);
           return { status: "ok", source: "native-global" };
         },
       },
     },
   };
   assert.equal(isNativeTauri(), true);
-  const nativeResponse = await invokeCommand("check_system_health", { refresh: true });
+  const nativeResponse = await startConversionBatch({
+    files: ["C:/input/example.pdf"],
+    outputDirectory: "C:/output",
+  });
   assert.deepEqual(nativeResponse, { status: "ok", source: "native-global" });
-  assert.deepEqual(received, ["check_system_health", { refresh: true }]);
+  assert.deepEqual(calls, [["start_conversion_batch", {
+    request: { files: ["C:/input/example.pdf"], outputDirectory: "C:/output" },
+  }]]);
 
   globalThis.window = {
     __TAURI_INTERNALS__: {
@@ -62,9 +90,7 @@ try {
   assert.deepEqual(mockResponse("future_command", null).payload, null);
   await assert.rejects(() => invokeCommand(""), /non-empty string/);
   await assert.rejects(() => invokeCommand(null), /non-empty string/);
-  console.log(
-    "IPC adapter tests passed: isolated browser mocks, future payloads, validation, and native delegation",
-  );
+  console.log("IPC adapter tests passed: browser queue contract, cancellation, validation, and native delegation");
 } finally {
   console.info = originalInfo;
   if (originalWindow === undefined) {

@@ -1,6 +1,8 @@
 mod commands;
 
+use commands::conversion::{cancel_batch, get_queue_status, start_conversion_batch, ConversionQueue};
 use commands::health::check_system_health;
+use commands::tools::resolve_conversion_tool;
 use tauri::{
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
@@ -10,7 +12,14 @@ use tauri::{
 
 pub fn run() {
     let builder = tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![check_system_health])
+        .manage(ConversionQueue::default())
+        .invoke_handler(tauri::generate_handler![
+            check_system_health,
+            resolve_conversion_tool,
+            start_conversion_batch,
+            cancel_batch,
+            get_queue_status
+        ])
         .setup(|app| {
             let show_item = MenuItem::with_id(app, "show", "Show window", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
