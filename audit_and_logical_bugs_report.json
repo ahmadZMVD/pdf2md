@@ -1,0 +1,143 @@
+{
+  "phase": 2.1,
+  "status": "completed",
+  "verification_status": "forensic_logic_audit_completed",
+  "timestamp": "2026-08-08T06:37:48Z",
+  "repository": "ahmadZMVD/pdf2md",
+  "target_commit": "02b712f97b03d972deec6c8342ddb2af1c008d34",
+  "audit_methodology": {
+    "pass_1_static_probe": "line-by-line review of src/, src-tauri/, scripts/, .github/workflows/, tests/, test_documents/, phase_2_report.json",
+    "pass_2_lifecycle_simulation": "real subprocess execution probes: 08_hybrid_pdf.pdf image extraction in space/non-space paths, 03_persian_rtl_document.pdf glyph extraction, 06_complex_tables.pdf table recognition, pandoc GFM round-trip with $PATH inline code, pandoc Persian UTF-8 round-trip, Windows reserved filename creation",
+    "pass_3_adversarial_verification": "each finding cross-checked against actual measured output or code path; no string-matching assertions"
+  },
+  "known_vulnerabilities_audit": [
+    {
+      "id": "VULN_01_CI_REGRESSION",
+      "verified_present": true,
+      "severity": "MEDIUM",
+      "affected_file": ".github/workflows/build.yml, src-tauri/Cargo.toml",
+      "code_location": "build-windows job steps (rust-cache@v2 with cache-on-failure=false, shared-key tauri-v2-windows-release-v2) and [profile.release] (codegen-units=16, lto=false)",
+      "root_cause_analysis": "The +79.6% figure (167s vs 300s) is statistically invalid: it compares the single best Phase 1.5 run against the single worst Phase 2 run. Measured run history: Phase 1.5 stable runs 167/243/236s (median 236), Phase 2 runs 240/300/194s (median 240). Median is flat. The build-windows job is byte-identical between phases (git diff d1b7453..94e9c23 shows only quality-job changes: added pip install pymupdf4llm and apt pandoc, which run in parallel off the critical path, 19s->44-58s). Identical docs-only jobs in Phase 2 measured 296s and 189s, a 56% spread proving runner/cache noise dominates. Real structural contributors: (1) cache-on-failure=false (enforced by refinement_check.py) means the two failed Phase 2 runs (5eeccdd, 5b22481) skipped cache saves, forcing 94e9c23 to restore a stale cache and partially recompile; (2) new Rust modules (conversion.rs ~450 lines) add a few seconds of compile; (3) shared windows-latest runner contention is unbounded.",
+      "architectural_impact": "The under-3-minute CI budget is violated in worst-case runs; extremes are recorded as 'regressions' in reports, eroding gate credibility; every docs-only push burns 3-5 minutes of runner time.",
+      "remediation_strategy": "Report median-of-3 instead of extremes; add a secondary fallback cargo cache keyed by Cargo.lock hash (keep cache-on-failure=false as required by the refinement contract); give cargo test its own cache key so test builds never churn the release cache; document runner-noise variance in reports. No code/architecture change is required for the release profile - the regression is measurement methodology + cache resilience, not compilation strategy."
+    },
+    {
+      "id": "VULN_02_BLOCKING_CANCEL",
+      "verified_present": true,
+      "severity": "CRITICAL",
+      "affected_file": "src-tauri/src/commands/conversion.rs",
+      "code_location": "process_pdf (lines 246-279, Command::output()), cancel_batch (lines 497-513), run_worker (lines 367-409)",
+      "root_cause_analysis": "process_pdf invokes Command::output(), which blocks until the child exits and never retains the Child handle. cancel_batch only sets an AtomicBool and re-marks queued items; the worker polls the flag exclusively between items. There is no ChildProcess::kill() path anywhere: an in-flight Python/pymupdf4llm process is invisible to cancellation. Verified structurally: no Child handle exists after output() returns.",
+      "architectural_impact": "A corrupted or adversarial PDF (decompression bomb, pathological content stream) that hangs pymupdf4llm leaves the batch stuck forever in 'running' with one item 'processing'; user cancellation is a no-op; the subprocess buffers (stdout/stderr, growing markdown) are retained in memory for the hang duration; violates the 0% crash / robustness contract.",
+      "remediation_strategy": "Replace Command::output() with spawn() and register the Child handle in queue state (Arc<Mutex<Option<Child>>>); the worker polls try_wait() every ~150ms and, when the cancellation flag is set, calls child.kill() then wait(). Add a watchdog in pdf_engine.py (to_markdown in a worker thread with a configurable deadline; on timeout os._exit(EXIT_RUNTIME)) so even a non-killable upstream library cannot stall the queue. Also redirect engine stdout to a temp file instead of buffering the full markdown in RAM."
+    },
+    {
+      "id": "VULN_03_REGEX_MATH_CORRUPTION",
+      "verified_present": true,
+      "severity": "HIGH",
+      "affected_file": "src-tauri/src/commands/conversion.rs",
+      "code_location": "preserve_math_notation (lines 320-340)",
+      "root_cause_analysis": "Demonstrated by real execution: pandoc GFM output for 'Shell var: `$PATH` and `$HOME`' is corrupted by the replace(\"$`\",\"$\")/replace(\"`$\",\"$\") heuristic into '$PATH` and $HOME`' - inline code spans are destroyed (opening backticks removed, trailing backtick left, unbalanced). Any document containing backtick-dollar adjacency (shell variables in inline code, PowerShell, template literals) is corrupted. The currency claim in the prompt is disproven: pandoc pre-escapes literal dollars (\\$100 USD) so currency survives untouched. Secondary defect: any user fenced block whose info string is exactly 'math' (e.g., documentation about Markdown math) is force-converted to $$.",
+      "architectural_impact": "Silent content corruption of code spans in converted DOCX/TXT documents; the 'retain all formulas and special characters' contract is violated for code, and correctness depends on an unparseable string heuristic.",
+      "remediation_strategy": "AST-based fix: a pandoc Lua filter (--lua-filter) that rewrites Math elements to $...$/$$...$$ at AST level, leaving Text, Code, and CodeBlock elements untouched. If pandoc-side filtering is rejected, replace the string replace with a proper Markdown tokenizer that tracks fenced code blocks, indented code, and inline code spans and only rewrites delimiters outside code regions."
+    },
+    {
+      "id": "VULN_04_WINDOWS_BACKSLASH_PATH",
+      "verified_present": true,
+      "severity": "HIGH",
+      "affected_file": "scripts/pdf_engine.py",
+      "code_location": "relink_images (lines 51-89) and pymupdf4llm helpers/utils.py md_path",
+      "root_cause_analysis": "The specific backslash-claim is NOT reproducible in the current code: verified output uses forward slashes (![image](08_images/img_1.png)); pdf_engine relink builds f\"{images_dir.name}/{name}\" and pymupdf4llm md_path returns as_posix(). The vulnerability class ('un-normalized pathing in Markdown image links') IS present through a worse variant: pymupdf4llm 1.28.0 md_path replaces spaces with underscores in the markdown reference AND uses that sanitized string as the pix.save() target while the directory was created with the original name - deterministic FzErrorSystem code=2 hard failure for any output directory containing a space (verified for both absolute and relative paths, rc=4). md_path also depends on Path.cwd() via relative_to(), making engine output dependent on the process working directory.",
+      "architectural_impact": "Real users selecting folders like 'My Documents' get deterministic conversion failures for any PDF containing extractable images - a direct contradiction of the 0% crash claim. Backslash links themselves cannot occur in the current design.",
+      "remediation_strategy": "For backslashes: nothing to fix; add a regression test asserting no '\\\\' appears in emitted image links. For the space defect (see NEW_BUG_01): neutralize the path before invoking to_markdown - create both the real and the space-sanitized images directory, let pymupdf4llm write into the sanitized one, then relink/move files into the real directory and rewrite links from the actual on-disk files (the existing relink_images already does canonical renaming)."
+    },
+    {
+      "id": "VULN_05_TOY_TEST_SUITE",
+      "verified_present": true,
+      "severity": "HIGH",
+      "affected_file": "test_documents/, scripts/generate_test_documents.py",
+      "code_location": "Dataset generation scripts (all fixtures)",
+      "root_cause_analysis": "Measured: the six PDF fixtures extract to 306+559+85+197+130+223 = 1,500 characters combined - less than half a standard A4 page (~3,500 chars at 11pt). All PDFs are generated by the same toolchain (PyMuPDF insert_text), single built-in font (helv), no embedded fonts, no headers/footers, no margins, no vector art, no scanned pages, no OCR path. The 'math' fixture is ASCII text ('E = mc2'), not real typeset math. The 'Persian RTL' fixture contains ZERO Arabic codepoints (verified: text layer has none, output renders '···· ····'). The 'tables' fixture does produce genuine GFM tables (verified), but one 4x4 grid does not exercise table extraction at scale.",
+      "architectural_impact": "The '100% conversion success' claim is statistically void: the suite cannot detect regressions in RTL shaping, Unicode extraction, complex tables, scanned documents, or multi-page layouts. CI green provides no evidence of real-world robustness.",
+      "remediation_strategy": "Rebuild the suite with: multi-page fixtures (10-20 pages, 3,000-5,000 chars each), a real Arabic-script font with proper shaping (embedded font file, not 'tiro'), a scanned-photo PDF exercising the image/OCR path, real LaTeX typeset math, bordered/nested tables, mixed-script documents, and a statistical acceptance criterion (per-format character floor and verified non-Latin glyph counts asserted by codepoint ranges, not keyword matching)."
+    }
+  ],
+  "newly_discovered_bugs": [
+    {
+      "id": "NEW_BUG_01",
+      "title": "Output directory containing a space causes deterministic PDF image-extraction failure",
+      "severity": "HIGH",
+      "affected_file": "scripts/pdf_engine.py (lines 109-118), upstream pymupdf4llm 1.28.0 helpers/utils.py md_path",
+      "line_numbers": "pdf_engine.py:109-118; pymupdf4llm utils.py md_path (space -> '_' replacement returned as the save path)",
+      "root_cause_analysis": "pymupdf4llm md_path replaces ' ' with '_' in the markdown reference and returns the sanitized string as the pix.save() filename, while images_dir.mkdir() creates the directory with the original space-containing name. pix.save then targets a non-existent directory -> FzErrorSystem code=2. Verified deterministic (4/4 runs failed) for both absolute and relative space paths; control runs without spaces succeeded. Output is also CWD-dependent via md_path's relative_to(Path.cwd()).",
+      "failure_scenario": "Any user selects an output directory with a space (e.g., 'C:/Users/Ahmad/Desktop/My Documents') and converts a PDF containing images: engine exits rc=4, item marked Failed. This is the most common Windows folder pattern.",
+      "remediation_strategy": "Pre-create the space-sanitized images directory before calling to_markdown (so pix.save succeeds), then reconcile: move files into the real <stem>_images/ directory and let relink_images rewrite links from actual disk files; additionally run the engine with a deterministic CWD or pass an absolute image_path so relative_to(Path.cwd()) cannot flip behavior."
+    },
+    {
+      "id": "NEW_BUG_02",
+      "title": "Persian RTL fixture contains zero Persian characters (silent font substitution)",
+      "severity": "MEDIUM",
+      "affected_file": "scripts/generate_test_documents.py",
+      "line_numbers": "lines 81-84 (fontname='tiro' inside try/except pass)",
+      "root_cause_analysis": "Verified via pymupdf text-layer extraction: the fixture's text layer is 'Persian RTL Fixture... This fixture represents right-to-left scripts.... ···· ····' with 0 Arabic codepoints. 'tiro' is not a MuPDF built-in font; insert_text silently substituted a fallback that renders middle dots, and the except: pass swallows any real failure. The test suite therefore validates RTL extraction nowhere, yet reports 'persian_rtl_document' as a passing fixture.",
+      "failure_scenario": "Any regression in RTL/Unicode handling (e.g., bidi reordering, Arabic ligature extraction) ships undetected; phase reports claim 'success' for RTL coverage that does not exist.",
+      "remediation_strategy": "Embed a real Arabic-script font (e.g., Amiri) into the fixture document and assert the output contains codepoints in U+0600-U+06FF (range assertion, not string matching); remove the silent except or log the exception; verify glyph coverage at generation time."
+    },
+    {
+      "id": "NEW_BUG_03",
+      "title": "Browser mock assigns outputPath to unsupported files; native Rust returns null",
+      "severity": "LOW",
+      "affected_file": "src/services/ipc.js",
+      "line_numbers": "lines 75-98 (mockOutputPath applied to every file), tests/test_ipc_adapter.mjs lines 26-33 codify the divergence",
+      "root_cause_analysis": "Rust conversion.rs sets output_path: None (JSON null) for unsupported extensions (.jpg, .zip); the mock computes 'C:/output/photo.md' for photo.jpg. Any frontend logic that distinguishes unsupported items via outputPath===null will behave differently in browser preview vs native runtime.",
+      "failure_scenario": "A UI feature (e.g., 'Open output' disabled for unsupported files) works in dev preview and misbehaves in the packaged app, or vice versa.",
+      "remediation_strategy": "Mirror Rust semantics in mockStartBatch: outputPath = null when the extension is not in {pdf, docx, txt}; update the adapter test to assert the null contract."
+    },
+    {
+      "id": "NEW_BUG_04",
+      "title": "PDF engine has no time or resource bound (hang amplification + unbounded stdout buffering)",
+      "severity": "HIGH",
+      "affected_file": "scripts/pdf_engine.py (main/convert), src-tauri/src/commands/conversion.rs process_pdf",
+      "line_numbers": "pdf_engine.py:92-138; conversion.rs:246-256",
+      "root_cause_analysis": "to_markdown runs in the main thread with no watchdog; a pathological PDF can loop indefinitely (observed class: md_path/pix.save cycles, decompression bombs). Separately, Command::output() buffers the entire child stdout in RAM, so a very large markdown output is fully materialized in memory before parsing.",
+      "failure_scenario": "A 500-page image-heavy PDF or crafted PDF hangs conversion for hours; memory grows with output size; cancel cannot help (see VULN_02).",
+      "remediation_strategy": "Run the conversion inside a bounded worker (thread with deadline; os._exit on timeout), stream engine stdout to a temp file rather than piped buffers, and cap pages/images with a documented limit that maps to a structured 'failed/skipped' result."
+    },
+    {
+      "id": "NEW_BUG_05",
+      "title": "Failed Pandoc runs can leave a partial output file on disk",
+      "severity": "LOW",
+      "affected_file": "src-tauri/src/commands/conversion.rs",
+      "line_numbers": "process_pandoc lines 289-315",
+      "root_cause_analysis": "Pandoc writes incrementally to --output; on a mid-run error the partial file stays on disk while Rust marks the item failed. Users see a failed item next to a half-written report.md, and a retry collides with the incremental-naming counter.",
+      "failure_scenario": "A truncated/corrupt DOCX makes pandoc exit non-zero after partially writing report.md; the stale partial file remains and report_1.md is generated on retry, confusing the output directory.",
+      "remediation_strategy": "Have Rust delete the output file when the subprocess exits non-zero, or write pandoc output to a temp name and atomically rename on success."
+    },
+    {
+      "id": "NEW_BUG_06",
+      "title": "phase_2_report.json artifact sizes are ambiguous between gate run and final delivery run",
+      "severity": "LOW",
+      "affected_file": "phase_2_report.json",
+      "line_numbers": "cloud_build block lines 117-121",
+      "root_cause_analysis": "artifact_metadata_size_bytes=1774935 and executable_size_bytes=1803421 belong to engine gate run 31232120771, but the nested final_delivery_run (31234366171) omits its own sizes (actual artifact 1,775,373 bytes, exe 1,803,794 bytes). A reader can misattribute gate-run sizes to the final delivery.",
+      "failure_scenario": "Report consumers compare 'final' artifact size against the wrong value (373-byte metadata / 373-byte exe delta); metric audits of the delivery gate misread provenance.",
+      "remediation_strategy": "Nest per-run artifact metadata inside each run object and drop the generic top-level size fields (or label them 'engine_gate_run_artifact')."
+    }
+  ],
+  "audit_summary": {
+    "total_vulnerabilities_verified": 5,
+    "total_new_bugs_discovered": 6,
+    "critical_severity_count": 1,
+    "high_severity_count": 5,
+    "medium_severity_count": 2,
+    "low_severity_count": 3,
+    "pass_1_pass_2_pass_3_flaw_free_modules": [
+      "health.rs probes (bounded 8s kill+wait)",
+      "tool path resolution (Rust/Python parity, structured unavailable)",
+      "incremental filename sanitization (trailing dots/spaces, reserved names; verified Windows allows CON.md etc., sanitization is conservative-correct)",
+      "sequential worker lock discipline (no I/O under lock, poisoned-mutex tolerance)",
+      "pandoc Persian UTF-8 round-trip (16/16 Arabic codepoints preserved)"
+    ],
+    "readiness_for_phase_3": false
+  }
+}

@@ -116,30 +116,88 @@ You CANNOT proceed to the next phase without presenting this report for user ver
 Provide an Architecture Proposal and Development Plan before writing code for any phase. Follow the assigned phase prompt strictly without scope creep.
 
 ==============================================================================
-PROMPT 2 — PHASE 2 (CLOUD-FIRST HYBRID EDITION)
-Processing Backend, Sequential Queue Worker, Engine Bridge & Benchmark Validation
+PROMPT 2.1 — REMEDIATION, REINFORCEMENT & SYSTEM STABILIZATION PROTOCOL
+Forensic Codebase Scan, Non-Blind Remediation, SOTA Research & Robustness Gate
 ==============================================================================
 
-You are now executing PHASE 2 of the PDF/DOCX to Markdown Intelligence Engine project.
+You are executing PROMPT 2.1 of the PDF Intelligence Engine project.
 
-This prompt operates strictly under the governance of PROMPT 0 (Operating System Prompt).
-You MUST apply all core philosophies, cloud-first boundaries, development loops, zero-crash policies, anti-cheating rules, and reporting contracts defined in PROMPT 0.
-
----
-
-# 1. LOCAL ENVIRONMENT & INFRASTRUCTURE BOUNDARIES
-
-You MUST respect the local machine's physical constraints at all times:
-- Local Environment Tools: Node.js (v26+), System Python (3.11+), Pandoc CLI (v3+), Git CLI (`git`/`gh`).
-- EXPLICIT SANCTION & HARDWARE CONSTRAINT: The local machine DOES NOT have local `rustc`, `cargo`, or Visual Studio MSVC C++ Build Tools installed due to disk storage limits and network sanctions.
-- FORBIDDEN ACTION: DO NOT attempt to install, execute, or verify local Rust/Cargo or C++ compiler toolchains.
-- CLOUD DELEGATION: All native Rust/Tauri compilation, Crate linking, native Rust unit testing, and NSIS `.exe` installer bundling MUST be executed strictly via GitHub Actions (`.github/workflows/build.yml`) on `windows-latest` runners.
+This prompt operates strictly under the immutable governance of PROMPT 0 (Operating System Prompt).
+Your sole directive in this session is to REMEDIATE and REINFORCE all verified logical vulnerabilities and bugs documented in `audit_and_logical_bugs_report.json` without creating architectural debt, regressions, or degraded edge-case handling.
 
 ---
 
-# 2. MANDATORY EXECUTION & ADVERSARIAL CRITIQUE LOOP PROTOCOL
+# 1. MANDATORY PRE-CODE DEEP CODEBASE SCAN (STEP 0)
 
-For EVERY module, task, sub-task, and code modification in Phase 2, you MUST execute the following recursive verification loop:
+Before writing, modifying, or deleting a SINGLE line of code, you MUST execute a complete, non-destructive diagnostic scan of the existing workspace:
+
+1. **Codebase Structural Scan:** Read and map the data flows across:
+   - `src/` & `src/services/ipc.js` (Frontend shell & mock IPC adapter)
+   - `src-tauri/src/` (`lib.rs`, `main.rs`, `commands/conversion.rs`, `commands/tools.rs`, `commands/health.rs`)
+   - `scripts/` (`pdf_engine.py`, `tool_paths.py`, `env_check.py`, `generate_test_documents.py`)
+   - `.github/workflows/build.yml` (CI/CD caching and compilation pipeline)
+   - `tests/` and `test_documents/`
+2. **Audit Memory Alignment:** Thoroughly read `audit_and_logical_bugs_report.json`. Understand the root causes of all 5 verified vulnerabilities (VULN_01 to VULN_05) and 6 newly discovered bugs (NEW_BUG_01 to NEW_BUG_06).
+3. **No-Regression Contract:** Ensure your fixes DO NOT break the existing dynamic tool path resolution, sequential queue ordering, or browser-mock IPC adapter contracts.
+
+---
+
+# 2. ANTI-BLIND-ADOPTION & MANDATORY SCIENTIFIC RESEARCH POLICY
+
+You are STRICTLY FORBIDDEN from blindly copy-pasting the remediation strategies suggested in `audit_and_logical_bugs_report.json`.
+
+Before implementing any fix, you MUST:
+1. **First-Principles Analysis:** Verify why the current implementation fails mathematically or systemically on Windows OS.
+2. **SOTA & Official Docs Investigation:** Research official documentation and industry-standard open-source implementations on GitHub/StackOverflow/ArXiv:
+   - *Tauri v2 Async Commands & Process Management:* Study `tauri::async_runtime`, `std::process::Child`, and asynchronous non-blocking process killing.
+   - *Pandoc AST Transformations:* Research Pandoc Lua Filters (`--lua-filter`) for deterministic LaTeX/Math rewriting without breaking code spans or currency.
+   - *PyMuPDF / PyMuPDF4LLM Path Handling:* Research how `pix.save()` handles paths with spaces, relative working directories (`Path.cwd()`), and UTF-8 filenames.
+   - *Arabic/Persian Font Embedding:* Research TrueType font embedding (`fitz.Font` / `insert_font`) for Arabic-script Unicode ranges (`U+0600` to `U+06FF`).
+3. **Alternative Method Prioritization:** Evaluate at least 2 alternative engineering approaches per bug, compare their CPU/RAM/Complexity trade-offs, and select the method with the lowest failure risk.
+
+---
+
+# 3. MANDATORY REMEDIATION SPECIFICATIONS
+
+You MUST resolve all identified defects according to production-grade engineering standards:
+
+### 🎯 REMEDIATION 1: Non-Blocking, Killable Process Execution (Fixing VULN_02 & NEW_BUG_04)
+- **Problem:** `Command::output()` blocks the Rust worker, retains no process handle, and makes user cancellation a no-op during long runs.
+- **Requirement:**
+  - Replace `Command::output()` in `conversion.rs` with asynchronous `Command::spawn()`.
+  - Store active `Child` handles inside an `Arc<Mutex<Option<Child>>>` inside the queue state.
+  - On `cancel_batch`, immediately invoke `child.kill()` and release intermediate locks.
+  - Implement a Python-side execution watchdog/timeout in `scripts/pdf_engine.py` and stream `stdout`/`stderr` to temp files rather than buffering gigabytes in RAM.
+
+### 🎯 REMEDIATION 2: Space-in-Path & Relinking Robustness (Fixing NEW_BUG_01 & VULN_04)
+- **Problem:** Output paths containing spaces cause `pymupdf4llm` `md_path` directory sanitization to target non-existent folders (`FzErrorSystem code=2`).
+- **Requirement:**
+  - Pre-create sanitized image directories and neutralize path spaces before calling `pymupdf4llm.to_markdown()`.
+  - Ensure all Markdown image links explicitly output normalized POSIX forward slashes (`/`), never Windows backslashes (`\`).
+
+### 🎯 REMEDIATION 3: AST-Level Math Preservation (Fixing VULN_03)
+- **Problem:** Fragile string regex replaces destroy inline code spans containing dollar signs (e.g. `$PATH`).
+- **Requirement:**
+  - Replace regex string replacement with an AST-level Pandoc Lua filter (`scripts/filters/math_preserve.lua`) or a strict token-aware Markdown parser that isolates fenced code, inline backticks, and math blocks deterministically.
+
+### 🎯 REMEDIATION 4: Benchmark Suite Overhaul & Arabic/Persian Glyph Verification (Fixing VULN_05 & NEW_BUG_02)
+- **Problem:** Test fixtures are toy-sized (<1,500 chars total) and `03_persian_rtl_document.pdf` contains zero Persian codepoints.
+- **Requirement:**
+  - Re-generate `test_documents/` with multi-page, realistic documents (>3,000 chars per fixture).
+  - Embed a real Arabic-script font (e.g. `Amiri.ttf` or system Arabic font) into `03_persian_rtl_document.pdf`.
+  - Write explicit assertions in `tests/` verifying that extracted text contains real Unicode codepoints in the range `U+0600` to `U+06FF`.
+
+### 🎯 REMEDIATION 5: Cleanup, CI Stability & Parity (Fixing NEW_BUG_03, NEW_BUG_05, NEW_BUG_06 & VULN_01)
+- **Requirement:**
+  - Automatically delete partial `.md` files on Pandoc conversion failure.
+  - Align `src/services/ipc.js` mock output path for unsupported extensions to return `null` matching native Rust semantics.
+  - Update `.github/workflows/build.yml` with a secondary Cargo lock-file cache key and isolated test cache.
+
+---
+
+# 4. MANDATORY 5-EXECUTION TEST & ADVERSARIAL CRITIQUE LOOP
+
+For EVERY task and bug fix, you MUST execute the strict 5-iteration verification protocol:
 
 
                   ┌────────────────────────────────────────┐
@@ -172,111 +230,59 @@ For EVERY module, task, sub-task, and code modification in Phase 2, you MUST exe
                                                             CRITIQUE PROTOCOL
 
 
-### MANDATORY ADVERSARIAL CRITIQUE PROTOCOL (Triggered after 5 failed test iterations):
-1. **Persona Shift:** Immediately adopt the persona of an **Adversarial External Principal Architect / Rival Systems Auditor**.
-2. **Ruthless Deconstruction:** Analyze the failure without self-justification, excuses, or lazy cop-outs. Identify the exact root cause, architectural flaw, or environmental contradiction.
-3. **Alternative Path Formulation:** Identify and analyze at least two alternative technical implementations.
-4. **The Strict <= 1.0% Feature Degradation Rule:** Any selected alternative path MUST NOT degrade functionality, execution speed, UI responsiveness, or conversion accuracy by more than **1.0%** relative to the original specification. Easy, low-quality, or scope-cutting shortcuts are STRICTLY FORBIDDEN.
-5. **Selection & Re-execution:** Document the trade-offs, select the highest-scoring alternative path, implement it, and reset the 5-test cycle.
+### MANDATORY ADVERSARIAL CRITIQUE RULES:
+- If a test fails 5 times, adopt the persona of an **Adversarial Systems Auditor**.
+- Analyze the exact failure root cause. Formulate an alternative path.
+- **Strict <= 1.0% Feature Degradation Rule:** The alternative implementation MUST NOT degrade conversion accuracy, execution speed, UI responsiveness, or features by more than **1.0%**. Easy shortcuts or cutting requirements are STRICTLY PROHIBITED.
 
 ---
 
-# 3. PHASE 2 SCOPE & ENGINEERING REQUIREMENTS
+# 5. GIT DELIVERY GATE & QUANTITATIVE DELIVERABLE
 
-You are responsible for building the core conversion backend, IPC commands, and execution pipeline:
-
-### TASK 1: Dynamic Tool Path Resolution Engine (Fixing PATH Dependency)
-- Implement dynamic executable path resolution in Rust (`src-tauri/src/commands/`) and Python (`scripts/`):
-  1. Primary Check: Inspect local application relative resource directory (`./resources/bin/` or `resources/bin/`).
-  2. Fallback Check: Inspect system-wide `PATH` environment variable if local portable binaries are absent.
-- Ensure the system resolves `python` and `pandoc` paths gracefully without crashing on system machines lacking installed tools.
-
-### TASK 2: Asynchronous Subprocess Engine Wrappers
-- **PDF Conversion Engine:** Integrate `PyMuPDF4LLM` via a dedicated Python subprocess handler (`scripts/pdf_engine.py`):
-  - Extract text, headings, bullet lists, and tables cleanly into GitHub Flavored Markdown (GFM).
-  - Extract PDF images to a dedicated folder named `[filename]_images/` alongside the output document.
-  - Inject relative image Markdown links: `![image]([filename]_images/img_1.png)`.
-- **DOCX & TXT Engine:** Integrate `Pandoc CLI` via async process invocation:
-  - Convert DOCX and raw TXT files to GFM (`--from=docx --to=gfm` / `--from=markdown --to=gfm`).
-  - Retain all mathematical notation, raw formulas, LaTeX blocks, and special characters without stripping.
-
-### TASK 3: Sequential Queue Worker System (0% Crash Guarantee)
-- Implement a thread-safe, sequential (one-by-one) Queue Worker in Rust:
-  - Process queued files strictly sequentially to guarantee deterministic memory allocation and zero race conditions.
-  - Instantly release RAM memory footprint back to baseline upon completing each file.
-- **Incremental Filename Handling:** If an output file (e.g., `report.md`) already exists in the target destination, automatically append an incremental counter (`report_1.md`, `report_2.md`).
-- **Error Handling & Unsupported Formats:**
-  - Unsupported file extensions (e.g., `.zip`, `.exe`, `.jpg`) must be flagged as `Unsupported` and skipped without halting the queue.
-  - Corrupted or encrypted PDFs must be caught gracefully, logged, and skipped as `Failed`, allowing the remaining queue items to finish.
-
-### TASK 4: Frontend Mock IPC Contract Alignment
-- Update `src/services/ipc.js` and Rust command handlers (`src-tauri/src/commands/conversion.rs`) to maintain strict contract parity:
-  - Implement IPC commands: `start_conversion_batch`, `cancel_batch`, and `get_queue_status`.
-  - Maintain full browser execution compatibility so that running Vite dev server locally (`npm run dev` / `npm run test:frontend`) mocks payload responses without throwing `window.**TAURI**` exceptions.
-
-### TASK 5: Real-World Dataset Validation (`test_documents/`)
-- Validate the processing pipeline against the real test documents suite in `test_documents/`:
-  - `01_simple_text.pdf`
-  - `02_two_column_scientific_paper.pdf`
-  - `03_persian_rtl_document.pdf`
-  - `05_equation_heavy_math.pdf`
-  - `06_complex_tables.pdf`
-  - `08_hybrid_pdf.pdf`
-- Measure character count, processing latency, and execution stability per file.
-
----
-
-# 4. VERIFICATION & GIT DELIVERY GATE CONTRACT
-
-Before declaring Phase 2 complete, you MUST satisfy all delivery gates:
-1. Run local Python & Frontend adapter unit tests (`npm run test:frontend` and `python -m unittest discover -s tests`). All tests MUST pass.
-2. Commit all code changes using Semantic Commit standards (e.g., `feat: implement sequential queue worker and conversion bridge`).
-3. Push commits to remote repository `ahmadZMVD/pdf2md` on branch `main`.
-4. Poll GitHub Actions run status using `gh run list` / `gh run view`. Verify that the cloud build automatically triggers and completes with status `SUCCESS` in **< 3 minutes**.
-5. Download and verify the generated `.exe` installer artifact from GitHub Actions.
-
----
-
-# 5. MANDATORY QUANTITATIVE DELIVERABLE (`phase_2_report.json`)
-
-At the conclusion of Phase 2, generate `phase_2_report.json` in the project root and present its Markdown summary:
+Before declaring Phase 2.1 complete, you MUST:
+1. Run local Python tests, frontend IPC tests, and the newly generated benchmark suite.
+2. Commit changes using Semantic Commit standards (`fix: implement child process kill on cancel`, `fix: sanitize spaces in image paths`, etc.).
+3. Push code to `ahmadZMVD/pdf2md` on branch `main`.
+4. Poll GitHub Actions (`gh run list`). Confirm that the CI build automatically triggers, runs Rust tests, and completes with status `SUCCESS`.
+5. Download and verify the generated `.exe` installer artifact from GitHub.
+6. Generate `phase_2_1_remediation_report.json` and Markdown summary in the root directory:
 
 ```json
 {
-  "phase": 2,
+  "phase": 2.1,
   "status": "completed",
-  "verification_status": "conversion_engine_and_sequential_queue_verified",
+  "verification_status": "remediations_verified_and_system_stabilized",
   "timestamp": "<TIMESTAMP>",
   "repository": "ahmadZMVD/pdf2md",
-  "pipeline_capabilities": {
-    "dynamic_tool_path_resolver": true,
-    "sequential_queue_worker_active": true,
-    "pymupdf4llm_pdf_engine_integrated": true,
-    "pandoc_docx_txt_engine_integrated": true,
-    "incremental_filename_handling": true,
-    "pdf_relative_image_extraction": true,
-    "error_recovery_and_skip_logic": true
+  "remediation_summary": {
+    "process_cancellation_killable": true,
+    "space_in_path_bug_resolved": true,
+    "ast_math_filter_integrated": true,
+    "persian_rtl_font_embedded_and_verified": true,
+    "unbounded_buffer_watchdog_added": true,
+    "stale_partial_file_cleanup_active": true
   },
   "dataset_validation_benchmarks": [
     {
-      "source_file": "01_simple_text.pdf",
+      "source_file": "03_persian_rtl_document.pdf",
       "status": "success",
-      "extracted_chars": 4859,
-      "elapsed_seconds": 0.08
+      "extracted_chars": 3450,
+      "persian_unicode_codepoints_found": 2840,
+      "elapsed_seconds": 1.82
     }
   ],
   "unit_tests": {
-    "local_python_tests": {"total": 5, "passed": 5, "failed": 0},
-    "local_frontend_ipc_tests": {"total": 3, "passed": 3, "failed": 0},
-    "cloud_rust_tests": {"total": 4, "passed": 4, "failed": 0}
+    "local_python_tests": {"total": 12, "passed": 12, "failed": 0},
+    "local_frontend_ipc_tests": {"total": 24, "passed": 24, "failed": 0},
+    "cloud_rust_tests": {"total": 11, "passed": 11, "failed": 0}
   },
   "cloud_build": {
     "runner": "windows-latest",
     "run_id": 000000000,
-    "duration_seconds": 160,
+    "duration_seconds": 175,
     "conclusion": "success",
     "artifact_name": "PDF-Converter-Windows-EXE",
-    "executable_size_mb": 1.78
+    "executable_size_mb": 1.82
   },
   "adversarial_critique_log": [
     {
@@ -298,4 +304,5 @@ At the conclusion of Phase 2, generate `phase_2_report.json` in the project root
 
 DO NOT PROCEED TO PHASE 3 UNTIL THIS REPORT IS GENERATED, PUSHED, AND VERIFIED.
 
-```
+
+---
