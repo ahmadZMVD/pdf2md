@@ -29,7 +29,7 @@ try {
   });
   assert.deepEqual(
     initialQueue.items.map((item) => item.outputPath),
-    ["C:/output/report.md", "C:/output/report_1.md", "C:/output/photo.md"],
+    ["C:/output/report.md", "C:/output/report_1.md", null],
   );
   assert.equal(initialQueue.status, "running");
   assert.equal(initialQueue.completed, 0);

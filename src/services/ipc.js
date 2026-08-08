@@ -56,6 +56,8 @@ function validateBatchRequest(request) {
   }
 }
 
+const MOCK_SUPPORTED_EXTENSIONS = ["pdf", "docx", "txt"];
+
 function mockOutputPath(sourcePath, outputDirectory, reserved) {
   const sourceName = sourcePath.split(/[\\/]/).at(-1) || "document";
   const stem = (sourceName.replace(/\.[^.]*$/, "") || "document").replace(/[<>:"/\\|?*]/g, "");
@@ -70,6 +72,11 @@ function mockOutputPath(sourcePath, outputDirectory, reserved) {
     }
     index += 1;
   }
+}
+
+function mockExtension(sourcePath) {
+  const sourceName = sourcePath.split(/[\\/]/).at(-1) || "";
+  return (sourceName.includes(".") ? sourceName.slice(sourceName.lastIndexOf(".") + 1) : "").toLowerCase();
 }
 
 function mockStartBatch(payload) {
@@ -87,7 +94,9 @@ function mockStartBatch(payload) {
     cancelRequested: false,
     items: request.files.map((sourcePath) => ({
       sourcePath,
-      outputPath: mockOutputPath(sourcePath, request.outputDirectory, reserved),
+      outputPath: MOCK_SUPPORTED_EXTENSIONS.includes(mockExtension(sourcePath))
+        ? mockOutputPath(sourcePath, request.outputDirectory, reserved)
+        : null,
       status: "queued",
       error: null,
       characters: null,
