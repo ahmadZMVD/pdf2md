@@ -3,6 +3,7 @@ Plain Text Fixture
 
 Pandoc reads this file as markdown-ish text and emits GFM.
 
-Formula line: $a2 + b2 = c2$
-LaTeX block: $$\int_0\infty e{-t} dt = 1$$
+Formula line: $a^2 + b^2 = c^2$
+LaTeX block: $$\int_0^\infty e^{-t} dt = 1$$
+Shell variables: `$PATH` and `$HOME` must stay code spans.
 Special characters: em dash, ellipsis, and full coverage.
