@@ -25,10 +25,9 @@
 
 | Field | Value |
 | --- | --- |
-| Run ID | [31232120771](https://github.com/ahmadZMVD/pdf2md/actions/runs/31232120771) |
-| Conclusion | `success` |
-| Duration | 240 s (created 01:13:07Z → completed 01:17:07Z) |
-| Jobs | quality: success (58 s) · build-windows: success (234 s) · release: skipped (no tag) |
+| Engine gate run | [31232120771](https://github.com/ahmadZMVD/pdf2md/actions/runs/31232120771) — success (240 s) |
+| Final delivery run | [31234366171](https://github.com/ahmadZMVD/pdf2md/actions/runs/31234366171) — success (300 s, jobs: quality 44 s · build-windows 296 s) |
+| Jobs (delivery run) | quality: success (44 s) · build-windows: success (296 s) · release: skipped (no tag) |
 | Artifact | `PDF-Converter-Windows-EXE` (1,774,935 bytes metadata) |
 | Executable | `PDF & Document Converter_0.1.0_x64-setup.exe` — 1,803,421 bytes (1.80 MB) |
 
@@ -67,8 +66,8 @@ All 6 required PDF fixtures converted successfully through `scripts/pdf_engine.p
 
 ## 6. Git Delivery Gate
 
-- Committed and pushed to `main` on GitHub: true.
-- GitHub Actions workflow completed with `SUCCESS` (run 31232120771, full verification incl. native Rust tests): true.
+- Committed and pushed to `main` on GitHub: true (final commit `14fd8c9`).
+- GitHub Actions workflow completed with `SUCCESS` for both the engine gate (31232120771) and the final delivery push (31234366171), including native Rust tests: true.
 - Native `.exe` installer generated, downloaded, and verified (size 1,803,421 bytes): true.
 
 ## 7. Self-Critique & Identified Limitations

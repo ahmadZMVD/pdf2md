@@ -91,16 +91,28 @@
   },
   "cloud_build": {
     "runner": "windows-latest",
-    "run_id": 31232120771,
-    "run_url": "https://github.com/ahmadZMVD/pdf2md/actions/runs/31232120771",
-    "created_at": "2026-08-08T01:13:07Z",
-    "completed_at": "2026-08-08T01:17:07Z",
-    "duration_seconds": 240,
-    "conclusion": "success",
-    "jobs": {
-      "quality": {"conclusion": "success", "duration_seconds": 58},
-      "build-windows": {"conclusion": "success", "duration_seconds": 234},
-      "release": "skipped (no version tag on this run)"
+    "engine_gate_run": {
+      "run_id": 31232120771,
+      "run_url": "https://github.com/ahmadZMVD/pdf2md/actions/runs/31232120771",
+      "head_commit": "94e9c23bd70f0b07fc78ccfe6a368a0aba774b13",
+      "created_at": "2026-08-08T01:13:07Z",
+      "completed_at": "2026-08-08T01:17:07Z",
+      "duration_seconds": 240,
+      "conclusion": "success"
+    },
+    "final_delivery_run": {
+      "run_id": 31234366171,
+      "run_url": "https://github.com/ahmadZMVD/pdf2md/actions/runs/31234366171",
+      "head_commit": "14fd8c96edb95ba25b24e15317136ac7d9190d9e",
+      "created_at": "2026-08-08T02:10:19Z",
+      "completed_at": "2026-08-08T02:15:19Z",
+      "duration_seconds": 300,
+      "conclusion": "success",
+      "jobs": {
+        "quality": {"conclusion": "success", "duration_seconds": 44},
+        "build-windows": {"conclusion": "success", "duration_seconds": 296},
+        "release": "skipped (no version tag on this run)"
+      }
     },
     "artifact_name": "PDF-Converter-Windows-EXE",
     "artifact_metadata_size_bytes": 1774935,
@@ -142,6 +154,8 @@
     "committed": true,
     "pushed_to_main": true,
     "auto_triggered_ci_passed": true,
+    "final_delivery_commit": "14fd8c96edb95ba25b24e15317136ac7d9190d9e",
+    "final_delivery_run_id": 31234366171,
     "native_executable_generated": true,
     "artifact_downloaded_and_verified": true
   },
