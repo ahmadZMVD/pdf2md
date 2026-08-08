@@ -92,7 +92,7 @@ class Phase1Tests(unittest.TestCase):
         ]
         self.assertEqual(
             rust_test_steps,
-            ["cargo test --manifest-path src-tauri/Cargo.toml --lib --release"],
+            ["cargo test --manifest-path src-tauri/Cargo.toml --lib"],
         )
         upload_step = next(
             step for step in job["steps"] if step.get("uses") == "actions/upload-artifact@v4"

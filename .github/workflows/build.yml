@@ -83,6 +83,19 @@ jobs:
           workspaces: src-tauri -> target
           shared-key: tauri-v2-windows-release-v2
           cache-on-failure: false
+          # Secondary key chain keyed by the Cargo.lock hash: when the lock
+          # file changes, rust-cache falls back to entries of this namespace
+          # before recompiling from scratch.
+          key: lock-${{ hashFiles('src-tauri/Cargo.lock') }}
+
+      - name: Cache native test build (isolated from release cache)
+        id: rust-test-cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target/debug
+          shared-key: tauri-v2-windows-tests-v2
+          cache-on-failure: false
+          key: lock-${{ hashFiles('src-tauri/Cargo.lock') }}
 
       - name: Cache Tauri bundler tools
         id: bundler-cache
@@ -96,6 +109,8 @@ jobs:
         run: |
           "- Rust cache hit: ${{ steps.rust-cache.outputs.cache-hit }}" |
             Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          "- Rust test cache hit: ${{ steps.rust-test-cache.outputs.cache-hit }}" |
+            Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           "- Tauri bundler tools cache hit: ${{ steps.bundler-cache.outputs.cache-hit }}" |
             Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 
@@ -103,7 +118,7 @@ jobs:
         run: npm ci
 
       - name: Run native Rust tests
-        run: cargo test --manifest-path src-tauri/Cargo.toml --lib --release
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
 
       - name: Build Tauri Windows installer
         run: npm run tauri build
