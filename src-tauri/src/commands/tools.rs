@@ -16,11 +16,11 @@ pub struct ToolResolution {
 }
 
 /// Executable basenames probed for `tool`, in priority order.
-pub fn candidate_names(tool: &str) -> Vec<&'static str> {
+pub fn candidate_names(tool: &str) -> Vec<String> {
     match tool {
-        "python" => vec!["python", "python3", "py"],
-        "pandoc" => vec!["pandoc"],
-        other => vec![other],
+        "python" => vec!["python".into(), "python3".into(), "py".into()],
+        "pandoc" => vec!["pandoc".into()],
+        other => vec![other.to_owned()],
     }
 }
 
@@ -28,7 +28,7 @@ pub fn candidate_names(tool: &str) -> Vec<&'static str> {
 pub fn bundled_file_names(tool: &str) -> Vec<String> {
     let mut names = Vec::new();
     for base in candidate_names(tool) {
-        names.push(base.to_string());
+        names.push(base.clone());
         if cfg!(target_os = "windows") {
             names.push(format!("{}.exe", base));
         }
@@ -79,7 +79,7 @@ fn which(name: &str) -> Option<String> {
 /// Resolve the first PATH executable for `tool`, or None.
 pub fn resolve_from_path(tool: &str) -> Option<String> {
     for name in candidate_names(tool) {
-        if let Some(found) = which(name) {
+        if let Some(found) = which(&name) {
             return Some(found);
         }
     }
