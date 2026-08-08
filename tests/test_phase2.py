@@ -4,6 +4,7 @@ the statistical benchmark dataset (Phase 2.1)."""
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -19,6 +20,7 @@ SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 import fs_utils  # noqa: E402
+import pdf_engine  # noqa: E402
 import tool_paths  # noqa: E402
 
 CHARACTER_FLOOR = 3000
@@ -26,7 +28,15 @@ PERSIAN_CODEPOINT_FLOOR = 200
 MATH_FILTER = SCRIPTS / "filters" / "math_preserve.lua"
 
 
-def run_engine(source: Path, destination: Path, *extra: str) -> subprocess.CompletedProcess[str]:
+def run_engine(
+    source: Path,
+    destination: Path,
+    *extra: str,
+    environment: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    child_environment = os.environ.copy()
+    if environment:
+        child_environment.update(environment)
     return subprocess.run(
         [
             sys.executable,
@@ -45,6 +55,7 @@ def run_engine(source: Path, destination: Path, *extra: str) -> subprocess.Compl
         encoding="utf-8",
         check=False,
         timeout=90,
+        env=child_environment,
     )
 
 
@@ -173,7 +184,7 @@ class Phase2ExecutionTests(unittest.TestCase):
                 timeout=30,
             )
             self.assertEqual(docx.returncode, 0, docx.stderr)
-            self.assertGreater(len(docx_output.read_text(encoding="utf-8")), 100)
+            self.assertGreaterEqual(len(docx_output.read_text(encoding="utf-8")), CHARACTER_FLOOR)
 
             text_output = directory / "plain.md"
             text = subprocess.run(
@@ -186,6 +197,7 @@ class Phase2ExecutionTests(unittest.TestCase):
             )
             self.assertEqual(text.returncode, 0, text.stderr)
             markdown = text_output.read_text(encoding="utf-8")
+            self.assertGreaterEqual(len(markdown), CHARACTER_FLOOR)
             self.assertIn("a^2 + b^2 = c^2", markdown)
             self.assertIn("\\int_0^\\infty e^{-t} dt = 1", markdown)
             self.assertIn("`$PATH`", markdown)
@@ -235,6 +247,65 @@ class BenchmarkDatasetTests(unittest.TestCase):
                 if "![" in line:
                     self.assertNotIn("\\", line, "image links must use forward slashes")
 
+    def test_relink_uses_the_real_sanitized_staging_image_and_rejects_untrusted_files(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="pdf2md relink ") as temporary:
+            directory = Path(temporary)
+            staging = directory / "stage with spaces" / "images"
+            staging.mkdir(parents=True)
+            sanitized_staging = pdf_engine.sanitized_target(str(staging), directory)
+            sanitized_staging.mkdir(parents=True, exist_ok=True)
+            sanitized_image = sanitized_staging / "img-1.png"
+            sanitized_image.write_bytes(b"real generated image")
+            images_dir = directory / "converted_images"
+
+            markdown, count = pdf_engine.relink_images(
+                f"![](<{staging.as_posix()}/img-1.png>)",
+                staging,
+                sanitized_staging,
+                images_dir,
+                directory,
+            )
+            self.assertEqual(count, 1)
+            self.assertEqual(markdown, "![image](converted_images/img_1.png)")
+            self.assertEqual((images_dir / "img_1.png").read_bytes(), b"real generated image")
+
+            untrusted = directory / "untrusted.png"
+            untrusted.write_bytes(b"must remain untouched")
+            unchanged, count = pdf_engine.relink_images(
+                f"![]({untrusted.as_posix()})",
+                staging,
+                sanitized_staging,
+                images_dir,
+                directory,
+            )
+            self.assertEqual(count, 0)
+            self.assertEqual(unchanged, f"![]({untrusted.as_posix()})")
+            self.assertTrue(untrusted.is_file())
+
+    def test_engine_succeeds_when_the_system_temporary_directory_contains_spaces(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="pdf2md output ") as temporary:
+            directory = Path(temporary)
+            temporary_root = directory / "system temporary files"
+            temporary_root.mkdir()
+            destination = directory / "hybrid.md"
+            completed = run_engine(
+                ROOT / "test_documents" / "08_hybrid_pdf.pdf",
+                destination,
+                environment={
+                    "TMP": str(temporary_root),
+                    "TEMP": str(temporary_root),
+                    "TMPDIR": str(temporary_root),
+                },
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            payload = json.loads(completed.stdout)
+            self.assertGreater(payload["image_count"], 0)
+            markdown = destination.read_text(encoding="utf-8")
+            self.assertIn("![image](hybrid_images/img_1.png)", markdown)
+            self.assertFalse(list(temporary_root.rglob("pdf2md_staging_*")))
+            sanitized_temporary_root = pdf_engine.sanitized_target(str(temporary_root), directory)
+            self.assertFalse(list(sanitized_temporary_root.glob("pdf2md_staging_*")))
+
     def test_scanned_pdf_is_converted_and_its_pages_extracted_as_images(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             destination = Path(temporary) / "scanned.md"
@@ -253,6 +324,26 @@ class BenchmarkDatasetTests(unittest.TestCase):
             self.assertEqual(completed.returncode, 0, completed.stderr)
             payload = json.loads(completed.stdout)
             self.assertGreater(payload["pages"], 3)
+
+    def test_docx_and_text_sources_meet_the_realistic_character_floor(self) -> None:
+        self.assertGreaterEqual(
+            len((ROOT / "test_documents" / "11_plain_text_fixture.txt").read_text(encoding="utf-8")),
+            CHARACTER_FLOOR,
+        )
+        pandoc = tool_paths.resolve_tool("pandoc")["path"]
+        self.assertIsNotNone(pandoc)
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary) / "fixture.md"
+            completed = subprocess.run(
+                [pandoc, "--from=docx", "--to=plain", "--output", str(output), str(ROOT / "test_documents" / "10_docx_engine_fixture.docx")],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                check=False,
+                timeout=30,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertGreaterEqual(len(output.read_text(encoding="utf-8")), CHARACTER_FLOOR)
 
     def test_watchdog_timeout_is_a_structured_runtime_failure(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -296,8 +387,10 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(release["with"]["shared-key"], "tauri-v2-windows-release-v2")
         self.assertIn("hashFiles('src-tauri/Cargo.lock')", release["with"]["key"])
         self.assertEqual(tests["with"]["shared-key"], "tauri-v2-windows-tests-v2")
+        self.assertEqual(tests["with"]["workspaces"], "src-tauri -> target-tests")
         test_step = next(step for step in steps if step.get("name") == "Run native Rust tests")
         self.assertEqual(test_step["run"], "cargo test --manifest-path src-tauri/Cargo.toml --lib")
+        self.assertEqual(test_step["env"]["CARGO_TARGET_DIR"], "src-tauri/target-tests")
 
 
 if __name__ == "__main__":

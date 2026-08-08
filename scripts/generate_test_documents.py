@@ -352,14 +352,17 @@ def docx_source(path):
     if resolution["status"] == "unavailable":
         raise RuntimeError("pandoc is required to build the DOCX fixture")
     source = Path(tempfile.gettempdir()) / "pdf2md_docx_source.md"
+    body = "\n\n".join(ENGLISH_PARAGRAPHS * 4)
     source.write_text(
         "# DOCX Engine Fixture\n\n"
-        "Pandoc converts this document to GitHub flavored markdown.\n\n"
+        "This multi-page document exercises Pandoc's OOXML reader at a realistic scale.\n\n"
         "Mathematical notation such as $e^{ix} = \\cos x + i\\sin x$ must survive.\n\n"
         "Inline shell variables such as `$PATH` and `$HOME` are code spans and must "
         "never be rewritten as math, and currency like $5.00 stays escaped.\n\n"
-        "Second paragraph with a display formula:\n\n"
-        "$$\\int_0^\\infty e^{-t} \\, dt = 1$$\n",
+        "A display formula must remain a Math AST node before the GFM writer runs:\n\n"
+        "$$\\int_0^\\infty e^{-t} \\, dt = 1$$\n\n"
+        + body
+        + "\n",
         encoding="utf-8",
     )
     subprocess.run(
@@ -370,6 +373,7 @@ def docx_source(path):
 
 
 def txt_source(path):
+    body = "\n\n".join(ENGLISH_PARAGRAPHS * 4)
     path.write_text(
         "Plain Text Fixture\n"
         "==================\n\n"
@@ -377,7 +381,9 @@ def txt_source(path):
         "Formula line: $a^2 + b^2 = c^2$\n"
         "LaTeX block: $$\\int_0^\\infty e^{-t} dt = 1$$\n"
         "Shell variables: `$PATH` and `$HOME` must stay code spans.\n"
-        "Special characters: em dash, ellipsis, and full coverage.\n",
+        "Special characters: em dash, ellipsis, and full coverage.\n\n"
+        + body
+        + "\n",
         encoding="utf-8",
     )
 

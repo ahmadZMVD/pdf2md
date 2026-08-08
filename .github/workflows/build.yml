@@ -92,7 +92,7 @@ jobs:
         id: rust-test-cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri -> target/debug
+          workspaces: src-tauri -> target-tests
           shared-key: tauri-v2-windows-tests-v2
           cache-on-failure: false
           key: lock-${{ hashFiles('src-tauri/Cargo.lock') }}
@@ -118,6 +118,8 @@ jobs:
         run: npm ci
 
       - name: Run native Rust tests
+        env:
+          CARGO_TARGET_DIR: src-tauri/target-tests
         run: cargo test --manifest-path src-tauri/Cargo.toml --lib
 
       - name: Build Tauri Windows installer

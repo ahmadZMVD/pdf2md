@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashSet;
 use std::fs;
+use std::io::{BufReader, Read};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::{
@@ -30,6 +31,10 @@ use tauri::Manager;
 
 const SUPPORTED_EXTENSIONS: &[&str] = &["pdf", "docx", "txt"];
 const MAX_ERROR_LENGTH: usize = 1_000;
+/// A conversion engine normally emits one small JSON result.  Retaining more
+/// than this from an unexpected child process would defeat disk-backed output
+/// capture and let a hostile document consume the application's RAM.
+const MAX_CAPTURED_LOG_BYTES: u64 = 64 * 1024;
 const POLL_INTERVAL: Duration = Duration::from_millis(120);
 const PDF_TIMEOUT_SECONDS: u64 = 300;
 const PDF_MAX_PAGES: u64 = 2_000;
@@ -204,6 +209,17 @@ fn lock_active(active: &Mutex<Option<Child>>) -> MutexGuard<'_, Option<Child>> {
     active.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// Ask the current process to terminate without removing its handle from the
+/// queue. The queue worker subsequently takes and reaps it. Keeping reaping
+/// off the IPC command makes cancellation prompt and guarantees that temporary
+/// stdout/stderr files are removed only after the child has released them.
+fn signal_active_child(active_child: &Mutex<Option<Child>>) {
+    let mut guard = lock_active(active_child);
+    if let Some(child) = guard.as_mut() {
+        let _ = child.kill();
+    }
+}
+
 fn extension_of(path: &Path) -> String {
     path.extension()
         .and_then(|extension| extension.to_str())
@@ -311,6 +327,68 @@ fn json_error(stdout: &str, fallback: &str) -> String {
         .unwrap_or_else(|| fallback.to_owned())
 }
 
+/// Read only a bounded prefix of a child log. Child stdout should contain a
+/// compact JSON result; stderr is diagnostic-only. In either case, truncation
+/// is safer than materialising arbitrary child output in the desktop process.
+fn read_bounded_log(path: &Path) -> String {
+    let Ok(mut file) = fs::File::open(path) else {
+        return String::new();
+    };
+    let length = file.metadata().map(|metadata| metadata.len()).unwrap_or_default();
+    let mut bytes = Vec::new();
+    if file
+        .take(MAX_CAPTURED_LOG_BYTES)
+        .read_to_end(&mut bytes)
+        .is_err()
+    {
+        return String::new();
+    }
+    let mut content = String::from_utf8_lossy(&bytes).into_owned();
+    if length > MAX_CAPTURED_LOG_BYTES {
+        content.push_str("\n[child output truncated]\n");
+    }
+    content
+}
+
+/// Count UTF-8 code points from a completed Pandoc file without loading the
+/// Markdown document into RAM. Pandoc writes valid UTF-8; every non-continuing
+/// byte is the start of exactly one Unicode scalar value.
+fn count_utf8_characters(path: &Path) -> Result<usize, String> {
+    let file = fs::File::open(path).map_err(|error| format!("Pandoc output was unavailable: {error}"))?;
+    let mut reader = BufReader::new(file);
+    let mut buffer = [0_u8; 16 * 1024];
+    let mut characters = 0usize;
+    loop {
+        let read = reader
+            .read(&mut buffer)
+            .map_err(|error| format!("Pandoc output could not be read: {error}"))?;
+        if read == 0 {
+            return Ok(characters);
+        }
+        let in_chunk = buffer[..read]
+            .iter()
+            .filter(|byte| (**byte & 0b1100_0000) != 0b1000_0000)
+            .count();
+        characters = characters
+            .checked_add(in_chunk)
+            .ok_or_else(|| "Pandoc output character count exceeded supported size".to_owned())?;
+    }
+}
+
+/// Return an unpublished Pandoc destination in the same directory as the
+/// requested Markdown file. A same-volume rename publishes a completed file
+/// only after Pandoc exits successfully.
+fn temporary_output_path(output: &Path) -> PathBuf {
+    static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    let sequence = SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let name = output.file_name().and_then(|name| name.to_str()).unwrap_or("document.md");
+    output.with_file_name(format!(".{name}.pdf2md-{unique}-{sequence}.tmp"))
+}
+
 /// Spawn *command* with stdout/stderr redirected to temporary files, poll its
 /// exit status without blocking, and kill it the moment a cancellation is
 /// requested.  Returns a structured outcome; child output is read from disk,
@@ -348,8 +426,11 @@ fn run_capture(
 
     let status = loop {
         if cancellation.load(Ordering::Acquire) {
-            let mut guard = lock_active(active_child);
-            if let Some(mut active) = guard.take() {
+            let active = {
+                let mut guard = lock_active(active_child);
+                guard.take()
+            };
+            if let Some(mut active) = active {
                 let _ = active.kill();
                 let _ = active.wait();
             }
@@ -360,13 +441,16 @@ fn run_capture(
                 stderr: String::new(),
             });
         }
-        let mut guard = lock_active(active_child);
-        let Some(mut active) = guard.take() else {
+        let Some(mut active) = ({
+            let mut guard = lock_active(active_child);
+            guard.take()
+        }) else {
             return Err("engine process handle was lost while polling".to_owned());
         };
         match active.try_wait() {
             Ok(Some(status)) => break status,
             Ok(None) => {
+                let mut guard = lock_active(active_child);
                 *guard = Some(active);
                 drop(guard);
                 std::thread::sleep(POLL_INTERVAL);
@@ -379,8 +463,8 @@ fn run_capture(
         }
     };
 
-    let stdout = fs::read_to_string(&logs.stdout_path).unwrap_or_default();
-    let stderr = fs::read_to_string(&logs.stderr_path).unwrap_or_default();
+    let stdout = read_bounded_log(&logs.stdout_path);
+    let stderr = read_bounded_log(&logs.stderr_path);
     Ok(ChildOutcome {
         cancelled: false,
         success: status.success(),
@@ -459,25 +543,25 @@ fn process_pandoc(
     };
     let input_format = if extension == "docx" { "docx" } else { "markdown" };
     let started = std::time::Instant::now();
+    let temporary_output = temporary_output_path(output);
     let mut command = Command::new(pandoc_path);
     command
         .arg(format!("--from={input_format}"))
         .arg("--to=gfm")
         .arg(format!("--lua-filter={}", math_filter.display()))
         .arg("--output")
-        .arg(output)
+        .arg(&temporary_output)
         .arg(source);
     let outcome = match run_capture(&mut command, cancellation, active_child) {
         Ok(outcome) => outcome,
         Err(error) => return WorkResult::failed(error),
     };
     if outcome.cancelled {
-        // A killed Pandoc may have left a partially written output file.
-        let _ = fs::remove_file(output);
+        let _ = fs::remove_file(&temporary_output);
         return WorkResult::cancelled();
     }
     if !outcome.success {
-        let _ = fs::remove_file(output);
+        let _ = fs::remove_file(&temporary_output);
         let message = outcome.stderr.trim();
         return WorkResult::failed(if message.is_empty() {
             "Pandoc conversion failed".to_owned()
@@ -485,11 +569,14 @@ fn process_pandoc(
             message.to_owned()
         });
     }
-    let markdown = match fs::read_to_string(output) {
-        Ok(markdown) => markdown,
-        Err(error) => return WorkResult::failed(format!("Pandoc reported success but output was unavailable: {error}")),
+    if let Err(error) = fs::rename(&temporary_output, output) {
+        let _ = fs::remove_file(&temporary_output);
+        return WorkResult::failed(format!("Pandoc succeeded but output could not be published: {error}"));
+    }
+    let characters = match count_utf8_characters(output) {
+        Ok(characters) => characters,
+        Err(error) => return WorkResult::failed(error),
     };
-    let characters = markdown.chars().count();
     WorkResult::completed(characters, Some(started.elapsed().as_secs_f64()))
 }
 
@@ -681,13 +768,7 @@ pub fn start_conversion_batch(
 #[tauri::command]
 pub fn cancel_batch(state: tauri::State<'_, ConversionQueue>) -> QueueSnapshot {
     state.cancellation.store(true, Ordering::Release);
-    {
-        let mut guard = lock_active(&state.active_child);
-        if let Some(mut child) = guard.take() {
-            let _ = child.kill();
-            let _ = child.wait();
-        }
-    }
+    signal_active_child(&state.active_child);
     let mut snapshot = lock_snapshot(&state.snapshot);
     if snapshot.status == BatchStatus::Running {
         snapshot.cancel_requested = true;
@@ -710,12 +791,17 @@ pub fn get_queue_status(state: tauri::State<'_, ConversionQueue>) -> QueueSnapsh
 
 #[cfg(test)]
 mod tests {
-    use super::{extension_of, first_existing, output_path_for, run_capture, sanitize_stem, supported, Command, Mutex};
+    use super::{
+        extension_of, first_existing, output_path_for, run_capture, sanitize_stem,
+        count_utf8_characters, signal_active_child, supported, temporary_output_path, Command,
+        MAX_CAPTURED_LOG_BYTES, Mutex,
+    };
     use std::collections::HashSet;
     use std::fs;
     use std::process::Child;
     use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
+    use std::thread;
     use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
     fn unique_directory(label: &str) -> std::path::PathBuf {
@@ -807,5 +893,66 @@ mod tests {
         assert!(!outcome.success);
         assert!(started.elapsed() < Duration::from_secs(5), "kill must not wait for the child");
         assert!(child.lock().unwrap().is_none(), "killed handle must be released");
+    }
+
+    #[test]
+    fn active_cancellation_signals_without_holding_the_child_mutex_for_reaping() {
+        let mut command = Command::new(if cfg!(target_os = "windows") { "cmd.exe" } else { "sh" });
+        if cfg!(target_os = "windows") {
+            command.args(["/C", "ping -n 30 127.0.0.1 >nul"]);
+        } else {
+            command.args(["-c", "sleep 30"]);
+        }
+        let cancellation = cancellation_flag(false);
+        let child: Arc<Mutex<Option<Child>>> = Arc::new(Mutex::new(None));
+        let cancellation_for_signal = cancellation.clone();
+        let child_for_signal = child.clone();
+        let signal = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(80));
+            cancellation_for_signal.store(true, std::sync::atomic::Ordering::Release);
+            signal_active_child(child_for_signal.as_ref());
+        });
+
+        let started = Instant::now();
+        let outcome = run_capture(&mut command, &cancellation, &child).expect("engine must return");
+        signal.join().expect("signal thread must not panic");
+        assert!(outcome.cancelled);
+        assert!(started.elapsed() < Duration::from_secs(5), "cancellation must return promptly");
+        assert!(child.lock().unwrap().is_none(), "worker must reap the killed child");
+    }
+
+    #[test]
+    fn child_logs_are_bounded_after_disk_backed_capture() {
+        let mut command = Command::new(if cfg!(target_os = "windows") { "cmd.exe" } else { "sh" });
+        if cfg!(target_os = "windows") {
+            command.args(["/C", "for /L %i in (1,1,9000) do @echo 0123456789"]);
+        } else {
+            command.args(["-c", "yes 0123456789 | head -n 9000"]);
+        }
+        let cancellation = cancellation_flag(false);
+        let child: Arc<Mutex<Option<Child>>> = Arc::new(Mutex::new(None));
+        let outcome = run_capture(&mut command, &cancellation, &child).expect("engine must run");
+        assert!(outcome.success);
+        assert!(outcome.stdout.len() <= MAX_CAPTURED_LOG_BYTES as usize + 32);
+        assert!(outcome.stdout.contains("[child output truncated]"));
+    }
+
+    #[test]
+    fn temporary_pandoc_output_is_a_same_directory_unpublished_file() {
+        let output = std::path::Path::new("C:/output/report.md");
+        let temporary = temporary_output_path(output);
+        assert_eq!(temporary.parent(), output.parent());
+        assert_ne!(temporary, output);
+        assert!(temporary.file_name().unwrap().to_string_lossy().ends_with(".tmp"));
+    }
+
+    #[test]
+    fn utf8_character_count_uses_streaming_chunks() {
+        let directory = unique_directory("utf8-count");
+        let file = directory.join("unicode.md");
+        let content = "A".repeat(16 * 1024 - 1) + "سلام";
+        fs::write(&file, &content).unwrap();
+        assert_eq!(count_utf8_characters(&file).unwrap(), content.chars().count());
+        fs::remove_dir_all(directory).unwrap();
     }
 }

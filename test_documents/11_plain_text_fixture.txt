@@ -7,3 +7,211 @@ Formula line: $a^2 + b^2 = c^2$
 LaTeX block: $$\int_0^\infty e^{-t} dt = 1$$
 Shell variables: `$PATH` and `$HOME` must stay code spans.
 Special characters: em dash, ellipsis, and full coverage.
+
+This document verifies plain body text extraction at real-world scale.
+
+The pipeline must convert every paragraph to markdown without losing words
+
+or inserting phantom symbols, and it must do so deterministically.
+
+Sequential queue workers process files one by one so the memory footprint
+
+returns to baseline after each item and allocation stays predictable.
+
+Benchmarking measures character counts and latency for every document
+
+in the suite, and the results are reported in a machine-readable phase
+
+report that is verified by the delivery gate before completion.
+
+Native Rust compilation is delegated to the GitHub Actions runner while
+
+the local machine keeps a lightweight toolchain for scripts and tests.
+
+Artifacts are verified for presence and size before a phase report may
+
+be marked complete, and cache keys isolate test builds from releases.
+
+The graphical shell follows Apple design guidelines with a fixed window
+
+size, a deep dark theme, and minimalist status indicators.
+
+Documents with mixed scripts, complex tables, and embedded images are
+
+exercised so that regressions cannot hide behind toy-sized fixtures.
+
+Encrypted files return a structured failure, and password-protected
+
+content is never written to disk unless authentication succeeds.
+
+Long-running conversions can be cancelled by the user at any moment and
+
+the engine process is terminated promptly without leaking memory.
+
+The watchdog deadline protects the queue from pathological documents
+
+that would otherwise stall conversion for hours.
+
+Paths containing spaces are handled correctly on Windows, including
+
+folders such as My Documents that are common in real deployments.
+
+Every release artifact is a single lightweight installer that runs
+
+fully offline with no telemetry and no cloud dependency.
+
+This document verifies plain body text extraction at real-world scale.
+
+The pipeline must convert every paragraph to markdown without losing words
+
+or inserting phantom symbols, and it must do so deterministically.
+
+Sequential queue workers process files one by one so the memory footprint
+
+returns to baseline after each item and allocation stays predictable.
+
+Benchmarking measures character counts and latency for every document
+
+in the suite, and the results are reported in a machine-readable phase
+
+report that is verified by the delivery gate before completion.
+
+Native Rust compilation is delegated to the GitHub Actions runner while
+
+the local machine keeps a lightweight toolchain for scripts and tests.
+
+Artifacts are verified for presence and size before a phase report may
+
+be marked complete, and cache keys isolate test builds from releases.
+
+The graphical shell follows Apple design guidelines with a fixed window
+
+size, a deep dark theme, and minimalist status indicators.
+
+Documents with mixed scripts, complex tables, and embedded images are
+
+exercised so that regressions cannot hide behind toy-sized fixtures.
+
+Encrypted files return a structured failure, and password-protected
+
+content is never written to disk unless authentication succeeds.
+
+Long-running conversions can be cancelled by the user at any moment and
+
+the engine process is terminated promptly without leaking memory.
+
+The watchdog deadline protects the queue from pathological documents
+
+that would otherwise stall conversion for hours.
+
+Paths containing spaces are handled correctly on Windows, including
+
+folders such as My Documents that are common in real deployments.
+
+Every release artifact is a single lightweight installer that runs
+
+fully offline with no telemetry and no cloud dependency.
+
+This document verifies plain body text extraction at real-world scale.
+
+The pipeline must convert every paragraph to markdown without losing words
+
+or inserting phantom symbols, and it must do so deterministically.
+
+Sequential queue workers process files one by one so the memory footprint
+
+returns to baseline after each item and allocation stays predictable.
+
+Benchmarking measures character counts and latency for every document
+
+in the suite, and the results are reported in a machine-readable phase
+
+report that is verified by the delivery gate before completion.
+
+Native Rust compilation is delegated to the GitHub Actions runner while
+
+the local machine keeps a lightweight toolchain for scripts and tests.
+
+Artifacts are verified for presence and size before a phase report may
+
+be marked complete, and cache keys isolate test builds from releases.
+
+The graphical shell follows Apple design guidelines with a fixed window
+
+size, a deep dark theme, and minimalist status indicators.
+
+Documents with mixed scripts, complex tables, and embedded images are
+
+exercised so that regressions cannot hide behind toy-sized fixtures.
+
+Encrypted files return a structured failure, and password-protected
+
+content is never written to disk unless authentication succeeds.
+
+Long-running conversions can be cancelled by the user at any moment and
+
+the engine process is terminated promptly without leaking memory.
+
+The watchdog deadline protects the queue from pathological documents
+
+that would otherwise stall conversion for hours.
+
+Paths containing spaces are handled correctly on Windows, including
+
+folders such as My Documents that are common in real deployments.
+
+Every release artifact is a single lightweight installer that runs
+
+fully offline with no telemetry and no cloud dependency.
+
+This document verifies plain body text extraction at real-world scale.
+
+The pipeline must convert every paragraph to markdown without losing words
+
+or inserting phantom symbols, and it must do so deterministically.
+
+Sequential queue workers process files one by one so the memory footprint
+
+returns to baseline after each item and allocation stays predictable.
+
+Benchmarking measures character counts and latency for every document
+
+in the suite, and the results are reported in a machine-readable phase
+
+report that is verified by the delivery gate before completion.
+
+Native Rust compilation is delegated to the GitHub Actions runner while
+
+the local machine keeps a lightweight toolchain for scripts and tests.
+
+Artifacts are verified for presence and size before a phase report may
+
+be marked complete, and cache keys isolate test builds from releases.
+
+The graphical shell follows Apple design guidelines with a fixed window
+
+size, a deep dark theme, and minimalist status indicators.
+
+Documents with mixed scripts, complex tables, and embedded images are
+
+exercised so that regressions cannot hide behind toy-sized fixtures.
+
+Encrypted files return a structured failure, and password-protected
+
+content is never written to disk unless authentication succeeds.
+
+Long-running conversions can be cancelled by the user at any moment and
+
+the engine process is terminated promptly without leaking memory.
+
+The watchdog deadline protects the queue from pathological documents
+
+that would otherwise stall conversion for hours.
+
+Paths containing spaces are handled correctly on Windows, including
+
+folders such as My Documents that are common in real deployments.
+
+Every release artifact is a single lightweight installer that runs
+
+fully offline with no telemetry and no cloud dependency.

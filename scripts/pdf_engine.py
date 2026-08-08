@@ -108,7 +108,13 @@ def sanitized_target(raw_target: str, output_dir: Path) -> Path:
     return Path(sanitized).resolve()
 
 
-def relink_images(markdown: str, staging_dir: Path, images_dir: Path, output_dir: Path) -> tuple[str, int]:
+def relink_images(
+    markdown: str,
+    staging_dir: Path,
+    sanitized_staging_dir: Path,
+    images_dir: Path,
+    output_dir: Path,
+) -> tuple[str, int]:
     """Canonicalise extracted PNG names and make their links output-relative.
 
     A document is portable when the Markdown references
@@ -123,18 +129,30 @@ def relink_images(markdown: str, staging_dir: Path, images_dir: Path, output_dir
         return markdown, 0
 
     staging = staging_dir.resolve()
+    sanitized_staging = sanitized_staging_dir.resolve()
+    allowed_source_directories = {staging, sanitized_staging}
     canonical_dir = images_dir.resolve()
     name_by_source: dict[Path, str] = {}
 
     def rewrite(match: re.Match[str]) -> str:
         raw_target = match.group("target")
         try:
-            source = markdown_target_path(raw_target, output_dir).resolve()
-            sanitized_source = sanitized_target(raw_target, output_dir)
+            candidates = (
+                markdown_target_path(raw_target, output_dir).resolve(),
+                sanitized_target(raw_target, output_dir),
+            )
         except OSError:
             return match.group(0)
 
-        if source.parent not in (staging, sanitized_source.parent) or not source.is_file():
+        source = next(
+            (
+                candidate
+                for candidate in candidates
+                if candidate.parent in allowed_source_directories and candidate.is_file()
+            ),
+            None,
+        )
+        if source is None:
             return match.group(0)
         canonical_dir.mkdir(parents=True, exist_ok=True)
 
@@ -157,7 +175,68 @@ def relink_images(markdown: str, staging_dir: Path, images_dir: Path, output_dir
     return relinked, len(name_by_source)
 
 
-def convert(input_path: Path, output_path: Path, max_pages: int) -> dict:
+def prepare_image_staging(output_dir: Path) -> tuple[Path, Path, Path]:
+    """Create the real and md_path-sanitized image staging locations.
+
+    PyMuPDF4LLM's ``md_path`` sanitizes the path it returns to ``pix.save``.
+    When a temporary directory includes a space, the original directory and
+    the actual write target therefore differ. Both paths are created here and
+    only these two directories are trusted during image relinking.
+    """
+
+    staging_root = Path(tempfile.mkdtemp(prefix="pdf2md_staging_"))
+    staging_dir = staging_root / "images"
+    staging_dir.mkdir(exist_ok=True)
+    sanitized_staging = sanitized_target(str(staging_dir), output_dir)
+    if sanitized_staging != staging_dir.resolve():
+        sanitized_staging.mkdir(parents=True, exist_ok=True)
+    return staging_root, staging_dir, sanitized_staging
+
+
+def cleanup_image_staging(staging_root: Path, sanitized_staging_dir: Path) -> None:
+    """Remove the exact staging paths owned by this conversion attempt."""
+
+    original_staging = (staging_root / "images").resolve()
+    shutil.rmtree(staging_root, ignore_errors=True)
+    if sanitized_staging_dir.resolve() != original_staging:
+        # ``sanitized_staging_dir`` is ``<unique staging root>/images``. The
+        # unique parent is owned by this attempt too; removing it prevents an
+        # empty sibling from accumulating when a user TEMP path has spaces.
+        sanitized_root = sanitized_staging_dir.parent
+        if sanitized_root.name.startswith("pdf2md_staging_"):
+            shutil.rmtree(sanitized_root, ignore_errors=True)
+        else:
+            shutil.rmtree(sanitized_staging_dir, ignore_errors=True)
+
+
+def write_markdown_atomically(output_path: Path, markdown: str) -> None:
+    """Publish fully rendered Markdown without exposing a partial file."""
+
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{output_path.stem}.pdf2md-",
+        suffix=".tmp",
+        dir=output_path.parent,
+        text=True,
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as handle:
+            handle.write(markdown)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary_path, output_path)
+    except BaseException:
+        temporary_path.unlink(missing_ok=True)
+        raise
+
+
+def convert(
+    input_path: Path,
+    output_path: Path,
+    max_pages: int,
+    staging_dir: Path,
+    sanitized_staging_dir: Path,
+) -> dict:
     """Convert *input_path* and return JSON-ready conversion data.
 
     Runs inside the caller's watchdog thread; must not call :func:`emit`
@@ -187,26 +266,20 @@ def convert(input_path: Path, output_path: Path, max_pages: int) -> dict:
         document.close()
 
     images_dir = output_path.parent / f"{output_path.stem}_images"
-    staging_root = Path(tempfile.mkdtemp(prefix="pdf2md_staging_"))
-    staging_dir = staging_root / "images"
-    staging_dir.mkdir(exist_ok=True)
-    # If the temporary directory itself contains characters that md_path
-    # sanitizes (e.g. a user profile with a space), pre-create the sanitized
-    # twin so pix.save() can never target a non-existent directory.
-    sanitized_staging = Path(sanitized_target(str(staging_dir), output_path.parent))
-    if sanitized_staging != staging_dir.resolve():
-        sanitized_staging.mkdir(parents=True, exist_ok=True)
-    try:
-        markdown = pymupdf4llm.to_markdown(
-            str(input_path),
-            write_images=True,
-            image_path=str(staging_dir),
-            image_format="png",
-            show_progress=False,
-        ).replace("\r\n", "\n")
-        markdown, image_count = relink_images(markdown, staging_dir, images_dir, output_path.parent)
-    finally:
-        shutil.rmtree(staging_root, ignore_errors=True)
+    markdown = pymupdf4llm.to_markdown(
+        str(input_path),
+        write_images=True,
+        image_path=str(staging_dir),
+        image_format="png",
+        show_progress=False,
+    ).replace("\r\n", "\n")
+    markdown, image_count = relink_images(
+        markdown,
+        staging_dir,
+        sanitized_staging_dir,
+        images_dir,
+        output_path.parent,
+    )
 
     if image_count == 0:
         try:
@@ -218,7 +291,7 @@ def convert(input_path: Path, output_path: Path, max_pages: int) -> dict:
             # successful document into a failed queue item.
             pass
 
-    output_path.write_text(markdown, encoding="utf-8")
+    write_markdown_atomically(output_path, markdown)
     return {
         "status": "success",
         "output_path": str(output_path),
@@ -250,10 +323,20 @@ def main(argv: list[str]) -> None:
     started = time.perf_counter()
     result: dict = {}
     errors: list[BaseException] = []
+    try:
+        staging_root, staging_dir, sanitized_staging_dir = prepare_image_staging(output_path.parent)
+    except OSError as error:
+        emit({"status": "runtime_error", "error": f"image staging is unavailable: {error}"}, EXIT_RUNTIME)
 
     def run() -> None:
         try:
-            result["payload"] = convert(input_path, output_path, max_pages=args.max_pages)
+            result["payload"] = convert(
+                input_path,
+                output_path,
+                max_pages=args.max_pages,
+                staging_dir=staging_dir,
+                sanitized_staging_dir=sanitized_staging_dir,
+            )
         except BaseException as error:  # noqa: BLE001 - collected by the watchdog
             errors.append(error)
 
@@ -264,6 +347,7 @@ def main(argv: list[str]) -> None:
         # The upstream conversion is stuck.  os._exit bypasses atexit/finally
         # and interpreter shutdown so even a hang inside native C code cannot
         # delay termination of the process.
+        cleanup_image_staging(staging_root, sanitized_staging_dir)
         print(
             json.dumps(
                 {
@@ -275,16 +359,19 @@ def main(argv: list[str]) -> None:
             flush=True,
         )
         os._exit(EXIT_RUNTIME)
-    if errors:
-        error = errors[0]
-        if isinstance(error, SystemExit):
-            # Structured failures raised by convert() (encrypted, limits).
-            raise error
-        emit({"status": "failed", "error": f"{type(error).__name__}: {error}"}, EXIT_ENGINE)
+    try:
+        if errors:
+            error = errors[0]
+            if isinstance(error, SystemExit):
+                # Structured failures raised by convert() (encrypted, limits).
+                raise error
+            emit({"status": "failed", "error": f"{type(error).__name__}: {error}"}, EXIT_ENGINE)
 
-    payload = result["payload"]
-    payload["elapsed_seconds"] = round(time.perf_counter() - started, 3)
-    emit(payload, EXIT_OK)
+        payload = result["payload"]
+        payload["elapsed_seconds"] = round(time.perf_counter() - started, 3)
+        emit(payload, EXIT_OK)
+    finally:
+        cleanup_image_staging(staging_root, sanitized_staging_dir)
 
 
 if __name__ == "__main__":
