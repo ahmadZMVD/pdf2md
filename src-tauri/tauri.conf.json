@@ -31,7 +31,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis"],
-    "resources": ["../scripts/pdf_engine.py"],
+    "resources": ["../scripts/pdf_engine.py", "../scripts/filters/math_preserve.lua"],
     "windows": {
       "nsis": {
         "installMode": "currentUser",
