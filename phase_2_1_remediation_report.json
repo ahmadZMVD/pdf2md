@@ -1,0 +1,229 @@
+{
+  "phase": 2.1,
+  "status": "completed",
+  "verification_status": "remediations_verified_and_system_stabilized",
+  "timestamp": "2026-08-08T22:51:47Z",
+  "repository": "ahmadZMVD/pdf2md",
+  "validated_commit": "c3c6296aa1ca55ccb1beb389756c8065254f2e5f",
+  "local_environment": {
+    "status": "ok",
+    "node": "v26.1.0",
+    "python": "Python 3.11.9",
+    "pymupdf4llm": "1.28.0",
+    "pandoc": "pandoc 3.10",
+    "git": "git version 2.54.0.windows.1",
+    "github_cli": "gh 2.92.0",
+    "native_toolchain": "delegated_to_github_actions"
+  },
+  "research_and_selection": [
+    {
+      "scope": "killable child process execution",
+      "sources": [
+        "https://doc.rust-lang.org/std/process/struct.Child.html",
+        "https://docs.rs/tauri/latest/tauri/async_runtime/index.html"
+      ],
+      "alternatives": [
+        {
+          "method": "Command::output with a cancellation flag",
+          "risk": "Cannot retain or kill the in-flight child; rejected."
+        },
+        {
+          "method": "Async runtime task with blocking child wait",
+          "risk": "Still requires a Child handle and a blocking reaper; no benefit for a one-item sequential queue."
+        },
+        {
+          "method": "Dedicated queue worker, Child::spawn polling, IPC kill signal and worker-side reaping",
+          "selected": true,
+          "tradeoff": "One bounded worker thread; no GUI wait and no process mutex held during reaping."
+        }
+      ]
+    },
+    {
+      "scope": "Pandoc math preservation",
+      "sources": [
+        "https://pandoc.org/lua-filters.html",
+        "https://pandoc.org/MANUAL.html"
+      ],
+      "alternatives": [
+        {
+          "method": "Regex replacement of rendered Markdown",
+          "risk": "Corrupts code spans; rejected."
+        },
+        {
+          "method": "Custom Markdown tokenizer",
+          "risk": "Would duplicate Pandoc parsing and increase maintenance risk."
+        },
+        {
+          "method": "Pandoc Lua Math-AST filter",
+          "selected": true,
+          "tradeoff": "Only Math nodes are rewritten; Code and CodeBlock nodes remain untouched."
+        }
+      ]
+    },
+    {
+      "scope": "PyMuPDF4LLM image pathing and Arabic fixtures",
+      "sources": [
+        "https://pymupdf.readthedocs.io/en/latest/pixmap.html",
+        "https://pymupdf.readthedocs.io/en/latest/page.html",
+        "https://github.com/pymupdf/PyMuPDF4LLM"
+      ],
+      "alternatives": [
+        {
+          "method": "Pass the user output directory directly to pymupdf4llm",
+          "risk": "md_path sanitizes its save target and fails for spaces; rejected."
+        },
+        {
+          "method": "Post-process arbitrary absolute image links",
+          "risk": "Could move user-owned files; rejected."
+        },
+        {
+          "method": "Owned staging directory plus sanitized twin allowlist and canonical relinking",
+          "selected": true,
+          "tradeoff": "One temporary image copy per extracted image; deterministic links and no external-file moves."
+        }
+      ]
+    },
+    {
+      "scope": "failed-output cleanup and CI caches",
+      "sources": [
+        "https://github.com/Swatinem/rust-cache"
+      ],
+      "alternatives": [
+        {
+          "method": "Delete a final Pandoc output after failure",
+          "risk": "Briefly exposes partial Markdown and can race readers."
+        },
+        {
+          "method": "Same-directory temporary output followed by rename",
+          "selected": true,
+          "tradeoff": "One small path allocation; final Markdown appears only after a successful conversion."
+        },
+        {
+          "method": "Two cache keys sharing src-tauri/target",
+          "risk": "Debug test artifacts overlap the release cache; rejected."
+        },
+        {
+          "method": "Lockfile-keyed release and CARGO_TARGET_DIR=src-tauri/target-tests test caches",
+          "selected": true,
+          "tradeoff": "Duplicate cache storage in exchange for deterministic isolation."
+        }
+      ]
+    }
+  ],
+  "remediation_summary": {
+    "process_cancellation_killable": true,
+    "space_in_path_bug_resolved": true,
+    "ast_math_filter_integrated": true,
+    "persian_rtl_font_embedded_and_verified": true,
+    "unbounded_buffer_watchdog_added": true,
+    "stale_partial_file_cleanup_active": true,
+    "isolated_native_test_cache_active": true
+  },
+  "dataset_validation_benchmarks": [
+    {
+      "source_file": "01_simple_text.pdf",
+      "status": "success",
+      "extracted_chars": 11240,
+      "elapsed_seconds": 3.048
+    },
+    {
+      "source_file": "02_two_column_scientific_paper.pdf",
+      "status": "success",
+      "extracted_chars": 10859,
+      "elapsed_seconds": 2.926
+    },
+    {
+      "source_file": "03_persian_rtl_document.pdf",
+      "status": "success",
+      "extracted_chars": 5540,
+      "persian_unicode_codepoints_found": 4184,
+      "elapsed_seconds": 2.448
+    },
+    {
+      "source_file": "05_equation_heavy_math.pdf",
+      "status": "success",
+      "extracted_chars": 4956,
+      "elapsed_seconds": 2.647
+    },
+    {
+      "source_file": "06_complex_tables.pdf",
+      "status": "success",
+      "extracted_chars": 4895,
+      "elapsed_seconds": 2.913
+    },
+    {
+      "source_file": "08_hybrid_pdf.pdf",
+      "status": "success",
+      "extracted_chars": 4000,
+      "elapsed_seconds": 2.353
+    }
+  ],
+  "unit_tests": {
+    "local_python_tests": {
+      "total": 23,
+      "passed": 23,
+      "failed": 0,
+      "elapsed_seconds": 24.831
+    },
+    "local_frontend_ipc_tests": {
+      "total": 1,
+      "passed": 1,
+      "failed": 0,
+      "elapsed_seconds": 1.4
+    },
+    "cloud_rust_tests": {
+      "total": 15,
+      "passed": 15,
+      "failed": 0,
+      "elapsed_seconds": 0.61
+    }
+  },
+  "five_execution_verification": [
+    "Fixture generator completed with 11 regenerated documents.",
+    "Python execution suite completed: 23 passed.",
+    "Frontend IPC adapter completed: 1 script passed.",
+    "Real PDF benchmark completed: 6 of 6 conversions succeeded.",
+    "Vite production build completed successfully."
+  ],
+  "cloud_build": {
+    "runner": "windows-latest",
+    "run_id": 31282097415,
+    "run_url": "https://github.com/ahmadZMVD/pdf2md/actions/runs/31282097415",
+    "duration_seconds": 485,
+    "conclusion": "success",
+    "artifact_name": "PDF-Converter-Windows-EXE",
+    "artifact_archive_size_bytes": 1796895,
+    "executable_name": "PDF & Document Converter_0.1.0_x64-setup.exe",
+    "executable_size_bytes": 1825695,
+    "executable_size_mb": 1.74,
+    "executable_header": "MZ"
+  },
+  "adversarial_critique_log": [
+    {
+      "task_name": "sanitized temporary image staging",
+      "failed_attempts": 1,
+      "critique_triggered": false,
+      "root_cause": "The regression probe used an invalid unquoted space-containing Markdown target, and cleanup retained the unique sanitized staging root.",
+      "alternative_path_selected": "Angle-bracket path probe plus exact owned-root cleanup.",
+      "feature_degradation_percentage": 0.0
+    },
+    {
+      "task_name": "killable process, math filter, Pandoc publication, fixture coverage, and CI cache isolation",
+      "failed_attempts": 0,
+      "critique_triggered": false,
+      "alternative_path_selected": null,
+      "feature_degradation_percentage": 0.0
+    }
+  ],
+  "git_delivery_gate": {
+    "committed": true,
+    "pushed_to_main": true,
+    "auto_triggered_ci_passed": true,
+    "native_executable_generated": true,
+    "validated_commit": "c3c6296aa1ca55ccb1beb389756c8065254f2e5f"
+  },
+  "identified_limitations": [
+    "PyMuPDF4LLM preserves scanned-page images but does not provide OCR text extraction; an OCR engine is outside the configured offline stack.",
+    "The source markdown returned by PyMuPDF4LLM is inherently materialized by that upstream API; page limits, watchdog termination, disk-backed child logs, and sequential processing bound the surrounding application risk."
+  ]
+}
