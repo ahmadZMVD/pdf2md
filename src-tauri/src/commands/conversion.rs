@@ -2,8 +2,17 @@
 //!
 //! The GUI never waits for a child process: `start_conversion_batch` prepares
 //! the immutable queue snapshot and starts one named worker thread.  That
-//! worker owns exactly one subprocess at a time, drops its output buffers after
-//! each document, and records terminal errors instead of propagating a panic.
+//! worker owns exactly one subprocess at a time, streams child stdout/stderr
+//! to temporary log files (never RAM buffers), and records terminal errors
+//! instead of propagating a panic.
+//!
+//! Process management is killable by design: every engine invocation is
+//! `Command::spawn()`ed and polled with `Child::try_wait()` every 120 ms. The
+//! live `Child` handle is parked in the queue state under a short-lived
+//! mutex, so `cancel_batch` can call `Child::kill()` immediately instead of
+//! waiting for the next queue boundary. The Python engine additionally runs
+//! its own watchdog with a hard deadline, so even a hang inside native C code
+//! cannot stall the batch.
 
 use crate::commands::tools::resolve_tool;
 use serde::{Deserialize, Serialize};
@@ -11,15 +20,19 @@ use serde_json::Value;
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
 use std::sync::{
     atomic::{AtomicBool, AtomicU64, Ordering},
-    Arc, Mutex,
+    Arc, Mutex, MutexGuard,
 };
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::Manager;
 
 const SUPPORTED_EXTENSIONS: &[&str] = &["pdf", "docx", "txt"];
 const MAX_ERROR_LENGTH: usize = 1_000;
+const POLL_INTERVAL: Duration = Duration::from_millis(120);
+const PDF_TIMEOUT_SECONDS: u64 = 300;
+const PDF_MAX_PAGES: u64 = 2_000;
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -86,12 +99,14 @@ impl Default for QueueSnapshot {
 
 /// Application state managed by Tauri.  Its mutex is held only while a small
 /// status snapshot is read or changed; no filesystem or subprocess work occurs
-/// under the lock.
+/// under the lock.  `active_child` is parked here so the cancel command can
+/// kill the in-flight engine process from any thread.
 #[derive(Clone)]
 pub struct ConversionQueue {
     snapshot: Arc<Mutex<QueueSnapshot>>,
     cancellation: Arc<AtomicBool>,
     next_batch_id: Arc<AtomicU64>,
+    active_child: Arc<Mutex<Option<Child>>>,
 }
 
 impl Default for ConversionQueue {
@@ -100,6 +115,7 @@ impl Default for ConversionQueue {
             snapshot: Arc::new(Mutex::new(QueueSnapshot::default())),
             cancellation: Arc::new(AtomicBool::new(false)),
             next_batch_id: Arc::new(AtomicU64::new(0)),
+            active_child: Arc::new(Mutex::new(None)),
         }
     }
 }
@@ -139,13 +155,55 @@ impl WorkResult {
             elapsed_seconds: None,
         }
     }
+
+    fn cancelled() -> Self {
+        Self {
+            status: QueueItemStatus::Cancelled,
+            error: None,
+            characters: None,
+            elapsed_seconds: None,
+        }
+    }
 }
 
-fn lock_snapshot(queue: &Arc<Mutex<QueueSnapshot>>) -> std::sync::MutexGuard<'_, QueueSnapshot> {
+/// Outcome of a polled engine invocation.
+#[derive(Debug)]
+struct ChildOutcome {
+    /// True when the process was killed by a cancellation request.
+    cancelled: bool,
+    /// True when the process exited with a zero status.
+    success: bool,
+    /// Exit code of a non-cancelled run.
+    code: Option<i32>,
+    /// Entire engine stdout streamed from a temporary file.
+    stdout: String,
+    /// Entire engine stderr streamed from a temporary file.
+    stderr: String,
+}
+
+/// Removes both log files when dropped, on every code path including early
+/// returns inside the run loop.
+struct TempLogs {
+    stdout_path: PathBuf,
+    stderr_path: PathBuf,
+}
+
+impl Drop for TempLogs {
+    fn drop(&mut self) {
+        let _ = fs::remove_file(&self.stdout_path);
+        let _ = fs::remove_file(&self.stderr_path);
+    }
+}
+
+fn lock_snapshot(queue: &Arc<Mutex<QueueSnapshot>>) -> MutexGuard<'_, QueueSnapshot> {
     // A conversion worker never intentionally panics. If an embedding host
     // poisoned the mutex, retaining the last consistent snapshot is safer than
     // crashing the desktop application during status polling.
     queue.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn lock_active(active: &Mutex<Option<Child>>) -> MutexGuard<'_, Option<Child>> {
+    active.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 fn extension_of(path: &Path) -> String {
@@ -209,6 +267,10 @@ fn truncate_error(message: String) -> String {
     format!("{prefix}…")
 }
 
+fn first_existing(candidates: Vec<PathBuf>) -> Option<PathBuf> {
+    candidates.into_iter().find(|candidate| candidate.is_file())
+}
+
 fn script_path(app: &tauri::AppHandle) -> Option<PathBuf> {
     let mut candidates = Vec::new();
     if let Ok(resource_dir) = app.path().resource_dir() {
@@ -223,18 +285,123 @@ fn script_path(app: &tauri::AppHandle) -> Option<PathBuf> {
             candidates.push(parent.join("resources").join("scripts").join("pdf_engine.py"));
         }
     }
-    candidates.into_iter().find(|candidate| candidate.is_file())
+    first_existing(candidates)
 }
 
-fn json_error(output: &[u8], fallback: &str) -> String {
-    serde_json::from_slice::<Value>(output)
+fn math_filter_path(app: &tauri::AppHandle) -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Ok(resource_dir) = app.path().resource_dir() {
+        candidates.push(resource_dir.join("scripts").join("filters").join("math_preserve.lua"));
+        candidates.push(resource_dir.join("filters").join("math_preserve.lua"));
+    }
+    if let Ok(current_dir) = std::env::current_dir() {
+        candidates.push(current_dir.join("scripts").join("filters").join("math_preserve.lua"));
+    }
+    if let Ok(executable) = std::env::current_exe() {
+        if let Some(parent) = executable.parent() {
+            candidates.push(parent.join("resources").join("scripts").join("filters").join("math_preserve.lua"));
+        }
+    }
+    first_existing(candidates)
+}
+
+fn json_error(stdout: &str, fallback: &str) -> String {
+    serde_json::from_str::<Value>(stdout)
         .ok()
         .and_then(|value| value.get("error").and_then(Value::as_str).map(str::to_owned))
         .filter(|message| !message.trim().is_empty())
         .unwrap_or_else(|| fallback.to_owned())
 }
 
-fn process_pdf(source: &Path, output: &Path, engine_script: Option<&Path>) -> WorkResult {
+/// Spawn *command* with stdout/stderr redirected to temporary files, poll its
+/// exit status without blocking, and kill it the moment a cancellation is
+/// requested.  Returns a structured outcome; child output is read from disk,
+/// so arbitrarily large engine output never grows process RAM.
+fn run_capture(
+    command: &mut Command,
+    cancellation: &AtomicBool,
+    active_child: &Mutex<Option<Child>>,
+) -> Result<ChildOutcome, String> {
+    static SEQUENCE: AtomicU64 = AtomicU64::new(0);
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos())
+        .unwrap_or_default();
+    let sequence = SEQUENCE.fetch_add(1, Ordering::Relaxed);
+    let logs = TempLogs {
+        stdout_path: std::env::temp_dir().join(format!("pdf2md-stdout-{unique}-{sequence}.log")),
+        stderr_path: std::env::temp_dir().join(format!("pdf2md-stderr-{unique}-{sequence}.log")),
+    };
+    let stdout_file = fs::File::create(&logs.stdout_path)
+        .map_err(|error| format!("could not create engine log file: {error}"))?;
+    let stderr_file = fs::File::create(&logs.stderr_path)
+        .map_err(|error| format!("could not create engine log file: {error}"))?;
+
+    let mut child = command
+        .stdin(Stdio::null())
+        .stdout(stdout_file)
+        .stderr(stderr_file)
+        .spawn()
+        .map_err(|error| format!("could not start engine process: {error}"))?;
+    {
+        let mut guard = lock_active(active_child);
+        *guard = Some(child);
+    }
+
+    let status = loop {
+        if cancellation.load(Ordering::Acquire) {
+            let mut guard = lock_active(active_child);
+            let status = if let Some(mut active) = guard.take() {
+                let _ = active.kill();
+                active.wait().ok()
+            } else {
+                None
+            };
+            return Ok(ChildOutcome {
+                cancelled: true,
+                success: false,
+                code: status.and_then(|value| value.code()),
+                stdout: String::new(),
+                stderr: String::new(),
+            });
+        }
+        let mut guard = lock_active(active_child);
+        let Some(mut active) = guard.take() else {
+            return Err("engine process handle was lost while polling".to_owned());
+        };
+        match active.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {
+                *guard = Some(active);
+                drop(guard);
+                std::thread::sleep(POLL_INTERVAL);
+            }
+            Err(error) => {
+                let _ = active.kill();
+                let _ = active.wait();
+                return Err(format!("engine process poll failed: {error}"));
+            }
+        }
+    };
+
+    let stdout = fs::read_to_string(&logs.stdout_path).unwrap_or_default();
+    let stderr = fs::read_to_string(&logs.stderr_path).unwrap_or_default();
+    Ok(ChildOutcome {
+        cancelled: false,
+        success: status.success(),
+        code: status.code(),
+        stdout,
+        stderr,
+    })
+}
+
+fn process_pdf(
+    source: &Path,
+    output: &Path,
+    engine_script: Option<&Path>,
+    cancellation: &AtomicBool,
+    active_child: &Mutex<Option<Child>>,
+) -> WorkResult {
     let Some(engine_script) = engine_script else {
         return WorkResult::failed("PDF engine script is unavailable in application resources");
     };
@@ -243,32 +410,34 @@ fn process_pdf(source: &Path, output: &Path, engine_script: Option<&Path>) -> Wo
         return WorkResult::failed("Python runtime is unavailable; install Python or bundle it in resources/bin");
     };
 
-    let command = Command::new(python_path)
+    let mut command = Command::new(python_path);
+    command
         .args(["-X", "utf8", "-I"])
         .arg(engine_script)
         .arg("--input")
         .arg(source)
         .arg("--output")
         .arg(output)
-        .stdin(Stdio::null())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .output();
-    let output_result = match command {
-        Ok(result) => result,
-        Err(error) => return WorkResult::failed(format!("could not start Python PDF engine: {error}")),
+        .arg("--timeout")
+        .arg(PDF_TIMEOUT_SECONDS.to_string())
+        .arg("--max-pages")
+        .arg(PDF_MAX_PAGES.to_string());
+    let outcome = match run_capture(&mut command, cancellation, active_child) {
+        Ok(outcome) => outcome,
+        Err(error) => return WorkResult::failed(error),
     };
-
-    let fallback = String::from_utf8_lossy(&output_result.stderr).trim().to_owned();
-    if !output_result.status.success() {
-        return WorkResult::failed(json_error(&output_result.stdout, &fallback));
+    if outcome.cancelled {
+        return WorkResult::cancelled();
     }
-    let payload: Value = match serde_json::from_slice(&output_result.stdout) {
+    if !outcome.success {
+        return WorkResult::failed(json_error(&outcome.stdout, &outcome.stderr));
+    }
+    let payload: Value = match serde_json::from_str(&outcome.stdout) {
         Ok(payload) => payload,
         Err(error) => return WorkResult::failed(format!("PDF engine returned invalid JSON: {error}")),
     };
     if payload.get("status").and_then(Value::as_str) != Some("success") {
-        return WorkResult::failed(json_error(&output_result.stdout, "PDF engine did not report success"));
+        return WorkResult::failed(json_error(&outcome.stdout, "PDF engine did not report success"));
     }
     let characters = payload
         .get("characters")
@@ -279,67 +448,65 @@ fn process_pdf(source: &Path, output: &Path, engine_script: Option<&Path>) -> Wo
     WorkResult::completed(characters, elapsed_seconds)
 }
 
-fn process_pandoc(source: &Path, output: &Path, extension: &str) -> WorkResult {
+fn process_pandoc(
+    source: &Path,
+    output: &Path,
+    extension: &str,
+    math_filter: Option<&Path>,
+    cancellation: &AtomicBool,
+    active_child: &Mutex<Option<Child>>,
+) -> WorkResult {
     let pandoc = resolve_tool("pandoc");
     let Some(pandoc_path) = pandoc.path else {
         return WorkResult::failed("Pandoc is unavailable; install Pandoc or bundle it in resources/bin");
     };
+    let Some(math_filter) = math_filter else {
+        return WorkResult::failed("math preservation filter is unavailable in application resources");
+    };
     let input_format = if extension == "docx" { "docx" } else { "markdown" };
     let started = std::time::Instant::now();
-    let result = Command::new(pandoc_path)
+    let mut command = Command::new(pandoc_path);
+    command
         .arg(format!("--from={input_format}"))
         .arg("--to=gfm")
+        .arg(format!("--lua-filter={}", math_filter.display()))
         .arg("--output")
         .arg(output)
-        .arg(source)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .output();
-    let process = match result {
-        Ok(result) => result,
-        Err(error) => return WorkResult::failed(format!("could not start Pandoc: {error}")),
+        .arg(source);
+    let outcome = match run_capture(&mut command, cancellation, active_child) {
+        Ok(outcome) => outcome,
+        Err(error) => return WorkResult::failed(error),
     };
-    if !process.status.success() {
-        return WorkResult::failed(String::from_utf8_lossy(&process.stderr).to_string());
+    if outcome.cancelled {
+        // A killed Pandoc may have left a partially written output file.
+        let _ = fs::remove_file(output);
+        return WorkResult::cancelled();
+    }
+    if !outcome.success {
+        let _ = fs::remove_file(output);
+        let message = outcome.stderr.trim();
+        return WorkResult::failed(if message.is_empty() {
+            "Pandoc conversion failed".to_owned()
+        } else {
+            message.to_owned()
+        });
     }
     let markdown = match fs::read_to_string(output) {
-        Ok(markdown) => preserve_math_notation(markdown),
+        Ok(markdown) => markdown,
         Err(error) => return WorkResult::failed(format!("Pandoc reported success but output was unavailable: {error}")),
     };
-    if let Err(error) = fs::write(output, &markdown) {
-        return WorkResult::failed(format!("could not finalize Pandoc output: {error}"));
-    }
     let characters = markdown.chars().count();
     WorkResult::completed(characters, Some(started.elapsed().as_secs_f64()))
 }
 
-/// Pandoc's strict GFM writer wraps TeX in inline code and fenced `math`
-/// blocks. GitHub accepts dollar math, and restoring those delimiters retains
-/// the source formula notation requested by the conversion contract.
-fn preserve_math_notation(markdown: String) -> String {
-    let inline = markdown.replace("$`", "$").replace("`$", "$");
-    let mut output = String::with_capacity(inline.len());
-    let mut in_math_fence = false;
-    for line in inline.split_inclusive('\n') {
-        let trimmed = line.trim();
-        if trimmed == "``` math" {
-            output.push_str("$$\n");
-            in_math_fence = true;
-        } else if in_math_fence && trimmed == "```" {
-            output.push_str("$$\n");
-            in_math_fence = false;
-        } else {
-            output.push_str(line);
-        }
-    }
-    if in_math_fence {
-        output.push_str("$$\n");
-    }
-    output
-}
-
-fn process_item(source: &Path, output: Option<&Path>, engine_script: Option<&Path>) -> WorkResult {
+fn process_item(
+    source: &Path,
+    output: Option<&Path>,
+    engine_script: Option<&Path>,
+    math_filter: Option<&Path>,
+    cancellation: &AtomicBool,
+    active_child: &Mutex<Option<Child>>,
+) -> WorkResult {
     let extension = extension_of(source);
     if !supported(&extension) {
         return WorkResult::unsupported(&extension);
@@ -348,8 +515,8 @@ fn process_item(source: &Path, output: Option<&Path>, engine_script: Option<&Pat
         return WorkResult::failed("queue item is missing its output path");
     };
     match extension.as_str() {
-        "pdf" => process_pdf(source, output, engine_script),
-        "docx" | "txt" => process_pandoc(source, output, &extension),
+        "pdf" => process_pdf(source, output, engine_script, cancellation, active_child),
+        "docx" | "txt" => process_pandoc(source, output, &extension, math_filter, cancellation, active_child),
         _ => WorkResult::unsupported(&extension),
     }
 }
@@ -368,6 +535,8 @@ fn run_worker(
     queue: Arc<Mutex<QueueSnapshot>>,
     cancellation: Arc<AtomicBool>,
     engine_script: Option<PathBuf>,
+    math_filter: Option<PathBuf>,
+    active_child: Arc<Mutex<Option<Child>>>,
 ) {
     loop {
         if cancellation.load(Ordering::Acquire) {
@@ -387,9 +556,19 @@ fn run_worker(
             )
         };
 
-        let result = process_item(&next.1, next.2.as_deref(), engine_script.as_deref());
+        let result = process_item(
+            &next.1,
+            next.2.as_deref(),
+            engine_script.as_deref(),
+            math_filter.as_deref(),
+            &cancellation,
+            &active_child,
+        );
         let mut snapshot = lock_snapshot(&queue);
         mark_result(&mut snapshot, next.0, result);
+        if result.status == QueueItemStatus::Cancelled {
+            break;
+        }
     }
 
     let mut snapshot = lock_snapshot(&queue);
@@ -461,12 +640,19 @@ pub fn start_conversion_batch(
 
     let queue = state.snapshot.clone();
     let cancellation = state.cancellation.clone();
+    let active_child = state.active_child.clone();
     let initial_snapshot = {
         let mut snapshot = lock_snapshot(&queue);
         if snapshot.status == BatchStatus::Running {
             return Err("a conversion batch is already running".to_owned());
         }
         cancellation.store(false, Ordering::Release);
+        {
+            // The previous batch is guaranteed reaped at this point; any
+            // stale handle is a programming error that must not leak.
+            let mut guard = lock_active(&active_child);
+            *guard = None;
+        }
         *snapshot = QueueSnapshot {
             batch_id: state.next_batch_id.fetch_add(1, Ordering::Relaxed) + 1,
             status: BatchStatus::Running,
@@ -479,11 +665,13 @@ pub fn start_conversion_batch(
     };
 
     let engine_script = script_path(&app);
+    let math_filter = math_filter_path(&app);
     let worker_queue = queue.clone();
     let worker_cancellation = cancellation.clone();
+    let worker_active = active_child.clone();
     if let Err(error) = std::thread::Builder::new()
         .name("pdf2md-conversion-queue".to_owned())
-        .spawn(move || run_worker(worker_queue, worker_cancellation, engine_script))
+        .spawn(move || run_worker(worker_queue, worker_cancellation, engine_script, math_filter, worker_active))
     {
         let mut snapshot = lock_snapshot(&queue);
         fail_start(&mut snapshot, "unable to start conversion worker");
@@ -492,11 +680,19 @@ pub fn start_conversion_batch(
     Ok(initial_snapshot)
 }
 
-/// Request cancellation. The active child process is allowed to finish safely;
-/// all queued files are immediately marked cancelled and will never be started.
+/// Request cancellation.  The in-flight engine process is killed immediately
+/// via its parked `Child` handle; all queued files are marked cancelled and
+/// will never be started.
 #[tauri::command]
 pub fn cancel_batch(state: tauri::State<'_, ConversionQueue>) -> QueueSnapshot {
     state.cancellation.store(true, Ordering::Release);
+    {
+        let mut guard = lock_active(&state.active_child);
+        if let Some(mut child) = guard.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
     let mut snapshot = lock_snapshot(&state.snapshot);
     if snapshot.status == BatchStatus::Running {
         snapshot.cancel_requested = true;
@@ -519,10 +715,24 @@ pub fn get_queue_status(state: tauri::State<'_, ConversionQueue>) -> QueueSnapsh
 
 #[cfg(test)]
 mod tests {
-    use super::{extension_of, output_path_for, preserve_math_notation, sanitize_stem, supported};
+    use super::{extension_of, first_existing, output_path_for, run_capture, sanitize_stem, supported, Command, Mutex};
     use std::collections::HashSet;
     use std::fs;
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::process::Child;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
+    use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+    fn unique_directory(label: &str) -> std::path::PathBuf {
+        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let directory = std::env::temp_dir().join(format!("pdf2md-{label}-{unique}"));
+        fs::create_dir_all(&directory).unwrap();
+        directory
+    }
+
+    fn cancellation_flag(value: bool) -> Arc<AtomicBool> {
+        Arc::new(AtomicBool::new(value))
+    }
 
     #[test]
     fn extension_matching_is_case_insensitive() {
@@ -533,9 +743,7 @@ mod tests {
 
     #[test]
     fn output_paths_increment_for_existing_and_reserved_names() {
-        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
-        let directory = std::env::temp_dir().join(format!("pdf2md-output-{unique}"));
-        fs::create_dir_all(&directory).unwrap();
+        let directory = unique_directory("output");
         fs::write(directory.join("report.md"), "already here").unwrap();
         let mut reserved = HashSet::new();
         let first = output_path_for(std::path::Path::new("report.pdf"), &directory, &mut reserved);
@@ -560,11 +768,49 @@ mod tests {
     }
 
     #[test]
-    fn pandoc_math_representation_is_restored_to_dollar_notation() {
-        let source = "Formula: $`a2 + b2 = c2`$\n``` math\n\\int_0^1 x dx\n```\n";
-        assert_eq!(
-            preserve_math_notation(source.to_owned()),
-            "Formula: $a2 + b2 = c2$\n$$\n\\int_0^1 x dx\n$$\n"
-        );
+    fn first_existing_prefers_the_earliest_present_candidate() {
+        let directory = unique_directory("candidates");
+        let present = directory.join("engine.py");
+        fs::write(&present, "print()").unwrap();
+        let found = first_existing(vec![present.clone(), directory.join("missing.py")]);
+        assert_eq!(found, Some(present));
+        let absent = first_existing(vec![directory.join("a.py"), directory.join("b.py")]);
+        assert_eq!(absent, None);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn engine_output_is_streamed_through_disk_not_ram() {
+        let mut command = Command::new(if cfg!(target_os = "windows") { "cmd.exe" } else { "sh" });
+        if cfg!(target_os = "windows") {
+            command.args(["/C", "echo disk-streamed-probe"]);
+        } else {
+            command.args(["-c", "echo disk-streamed-probe"]);
+        }
+        let cancellation = cancellation_flag(false);
+        let child: Arc<Mutex<Option<Child>>> = Arc::new(Mutex::new(None));
+        let outcome = run_capture(&mut command, &cancellation, &child).expect("engine must run");
+        assert!(!outcome.cancelled);
+        assert!(outcome.success);
+        assert!(outcome.stdout.contains("disk-streamed-probe"));
+        assert!(child.lock().unwrap().is_none(), "finished handle must be released");
+    }
+
+    #[test]
+    fn pending_cancellation_kills_the_child_promptly() {
+        let mut command = Command::new(if cfg!(target_os = "windows") { "cmd.exe" } else { "sh" });
+        if cfg!(target_os = "windows") {
+            command.args(["/C", "ping -n 30 127.0.0.1 >nul"]);
+        } else {
+            command.args(["-c", "sleep 30"]);
+        }
+        let cancellation = cancellation_flag(true);
+        let child: Arc<Mutex<Option<Child>>> = Arc::new(Mutex::new(None));
+        let started = Instant::now();
+        let outcome = run_capture(&mut command, &cancellation, &child).expect("engine must return");
+        assert!(outcome.cancelled, "pre-set cancellation must kill the child");
+        assert!(!outcome.success);
+        assert!(started.elapsed() < Duration::from_secs(5), "kill must not wait for the child");
+        assert!(child.lock().unwrap().is_none(), "killed handle must be released");
     }
 }
