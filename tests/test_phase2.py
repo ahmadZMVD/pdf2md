@@ -37,6 +37,7 @@ class Phase2ExecutionTests(unittest.TestCase):
             resource_dir.mkdir(parents=True)
             portable_python = resource_dir / ("python.exe" if tool_paths.os.name == "nt" else "python")
             portable_python.write_bytes(b"portable")
+            portable_python.chmod(0o755)
             with patch.object(tool_paths, "RESOURCE_DIRS", (resource_dir,)), patch.object(
                 tool_paths.shutil, "which", return_value="C:/system/python.exe"
             ):

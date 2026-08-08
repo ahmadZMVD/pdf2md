@@ -1,7 +1,7 @@
 """Dynamic resolution of the Python and Pandoc executables.
 
 Resolution order (shared contract with the Rust core in
-``src-tauri/src/tools.rs``):
+``src-tauri/src/commands/tools.rs``):
 
 1. Portable binaries bundled next to the application in ``resources/bin/``.
 2. The first working candidate on the system ``PATH`` environment variable.

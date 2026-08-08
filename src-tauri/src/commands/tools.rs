@@ -36,7 +36,6 @@ pub fn bundled_file_names(tool: &str) -> Vec<String> {
     names
 }
 
-
 fn resource_dirs() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
     if let Ok(cwd) = std::env::current_dir() {
@@ -125,7 +124,6 @@ mod tests {
         }
     }
 }
-
 
 #[tauri::command]
 pub fn resolve_conversion_tool(tool: String) -> ToolResolution {

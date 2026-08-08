@@ -35,6 +35,9 @@ jobs:
       - name: Install Python conversion test dependencies
         run: python -m pip install --disable-pip-version-check pyyaml pymupdf4llm
 
+      - name: Install Pandoc conversion runtime
+        run: sudo apt-get update && sudo apt-get install --yes pandoc
+
       - name: Install frontend dependencies
         run: npm ci
 
