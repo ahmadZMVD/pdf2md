@@ -1,0 +1,155 @@
+{
+  "phase": 2,
+  "status": "completed",
+  "verification_status": "conversion_engine_and_sequential_queue_verified",
+  "timestamp": "2026-08-08T05:39:04Z",
+  "repository": {
+    "name": "ahmadZMVD/pdf2md",
+    "url": "https://github.com/ahmadZMVD/pdf2md",
+    "branch": "main",
+    "engine_implementation_commit": "94e9c23bd70f0b07fc78ccfe6a368a0aba774b13"
+  },
+  "pipeline_capabilities": {
+    "dynamic_tool_path_resolver": true,
+    "sequential_queue_worker_active": true,
+    "pymupdf4llm_pdf_engine_integrated": true,
+    "pandoc_docx_txt_engine_integrated": true,
+    "incremental_filename_handling": true,
+    "pdf_relative_image_extraction": true,
+    "error_recovery_and_skip_logic": true
+  },
+  "dataset_validation_benchmarks": [
+    {
+      "source_file": "01_simple_text.pdf",
+      "status": "success",
+      "extracted_chars": 306,
+      "elapsed_seconds": 1.555,
+      "engine_elapsed_seconds": 1.377
+    },
+    {
+      "source_file": "02_two_column_scientific_paper.pdf",
+      "status": "success",
+      "extracted_chars": 559,
+      "elapsed_seconds": 1.473,
+      "engine_elapsed_seconds": 1.304
+    },
+    {
+      "source_file": "03_persian_rtl_document.pdf",
+      "status": "success",
+      "extracted_chars": 85,
+      "elapsed_seconds": 1.378,
+      "engine_elapsed_seconds": 1.209
+    },
+    {
+      "source_file": "05_equation_heavy_math.pdf",
+      "status": "success",
+      "extracted_chars": 197,
+      "elapsed_seconds": 1.395,
+      "engine_elapsed_seconds": 1.205
+    },
+    {
+      "source_file": "06_complex_tables.pdf",
+      "status": "success",
+      "extracted_chars": 130,
+      "elapsed_seconds": 1.532,
+      "engine_elapsed_seconds": 1.362
+    },
+    {
+      "source_file": "08_hybrid_pdf.pdf",
+      "status": "success",
+      "extracted_chars": 223,
+      "elapsed_seconds": 1.42,
+      "engine_elapsed_seconds": 1.256
+    }
+  ],
+  "unit_tests": {
+    "local_python_tests": {
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "duration_seconds": 7.024,
+      "note": "3 phase 1 scaffold tests + 7 phase 2 engine tests via python -m unittest discover -s tests"
+    },
+    "local_frontend_ipc_tests": {
+      "total": 24,
+      "passed": 24,
+      "failed": 0,
+      "note": "assertion-level count in tests/test_ipc_adapter.mjs; browser mock + native delegation paths"
+    },
+    "ci_quality_job_python_tests": {
+      "total": 10,
+      "passed": 10,
+      "failed": 0,
+      "duration_seconds": 6.204
+    },
+    "cloud_rust_tests": {
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "note": "cargo test --lib --release on windows-latest (conversion, tools, health modules)"
+    }
+  },
+  "cloud_build": {
+    "runner": "windows-latest",
+    "run_id": 31232120771,
+    "run_url": "https://github.com/ahmadZMVD/pdf2md/actions/runs/31232120771",
+    "created_at": "2026-08-08T01:13:07Z",
+    "completed_at": "2026-08-08T01:17:07Z",
+    "duration_seconds": 240,
+    "conclusion": "success",
+    "jobs": {
+      "quality": {"conclusion": "success", "duration_seconds": 58},
+      "build-windows": {"conclusion": "success", "duration_seconds": 234},
+      "release": "skipped (no version tag on this run)"
+    },
+    "artifact_name": "PDF-Converter-Windows-EXE",
+    "artifact_metadata_size_bytes": 1774935,
+    "executable_name": "PDF & Document Converter_0.1.0_x64-setup.exe",
+    "executable_size_bytes": 1803421,
+    "executable_size_mb": 1.8
+  },
+  "adversarial_critique_log": [
+    {
+      "task_name": "dynamic_tool_path_resolution",
+      "failed_attempts": 0,
+      "critique_triggered": false,
+      "alternative_path_selected": null,
+      "feature_degradation_percentage": 0.0
+    },
+    {
+      "task_name": "subprocess_engine_wrappers",
+      "failed_attempts": 0,
+      "critique_triggered": false,
+      "alternative_path_selected": null,
+      "feature_degradation_percentage": 0.0
+    },
+    {
+      "task_name": "sequential_queue_worker",
+      "failed_attempts": 0,
+      "critique_triggered": false,
+      "alternative_path_selected": null,
+      "feature_degradation_percentage": 0.0
+    },
+    {
+      "task_name": "frontend_ipc_contract_alignment",
+      "failed_attempts": 0,
+      "critique_triggered": false,
+      "alternative_path_selected": null,
+      "feature_degradation_percentage": 0.0
+    }
+  ],
+  "git_delivery_gate": {
+    "committed": true,
+    "pushed_to_main": true,
+    "auto_triggered_ci_passed": true,
+    "native_executable_generated": true,
+    "artifact_downloaded_and_verified": true
+  },
+  "identified_limitations": [
+    "test_documents/ fixtures are small by design; extracted character counts (85-559) are real measurements, but large real-world PDFs have not been stress-tested yet.",
+    "Pandoc GFM math preservation relies on a deterministic delimiter-restore heuristic ($` -> $, math fences -> $$); exotic TeX edge cases may need refinement in a later phase.",
+    "PDF image extraction is limited to PNG (image_format=png); other raster formats are not produced.",
+    "cancel_batch lets the in-flight subprocess finish before halting; hard process termination is deliberately avoided to prevent orphaned files.",
+    "Cloud build duration was 240s on windows-latest, above the 3-minute aspirational target; reported as measured."
+  ]
+}
