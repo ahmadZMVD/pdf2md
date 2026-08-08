@@ -173,8 +173,6 @@ struct ChildOutcome {
     cancelled: bool,
     /// True when the process exited with a zero status.
     success: bool,
-    /// Exit code of a non-cancelled run.
-    code: Option<i32>,
     /// Entire engine stdout streamed from a temporary file.
     stdout: String,
     /// Entire engine stderr streamed from a temporary file.
@@ -337,7 +335,7 @@ fn run_capture(
     let stderr_file = fs::File::create(&logs.stderr_path)
         .map_err(|error| format!("could not create engine log file: {error}"))?;
 
-    let mut child = command
+    let child = command
         .stdin(Stdio::null())
         .stdout(stdout_file)
         .stderr(stderr_file)
@@ -351,16 +349,13 @@ fn run_capture(
     let status = loop {
         if cancellation.load(Ordering::Acquire) {
             let mut guard = lock_active(active_child);
-            let status = if let Some(mut active) = guard.take() {
+            if let Some(mut active) = guard.take() {
                 let _ = active.kill();
-                active.wait().ok()
-            } else {
-                None
-            };
+                let _ = active.wait();
+            }
             return Ok(ChildOutcome {
                 cancelled: true,
                 success: false,
-                code: status.and_then(|value| value.code()),
                 stdout: String::new(),
                 stderr: String::new(),
             });
@@ -389,7 +384,6 @@ fn run_capture(
     Ok(ChildOutcome {
         cancelled: false,
         success: status.success(),
-        code: status.code(),
         stdout,
         stderr,
     })
@@ -564,9 +558,10 @@ fn run_worker(
             &cancellation,
             &active_child,
         );
+        let cancelled = result.status == QueueItemStatus::Cancelled;
         let mut snapshot = lock_snapshot(&queue);
         mark_result(&mut snapshot, next.0, result);
-        if result.status == QueueItemStatus::Cancelled {
+        if cancelled {
             break;
         }
     }
