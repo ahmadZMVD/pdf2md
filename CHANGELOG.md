@@ -7,8 +7,40 @@ and releases use semantic versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Apple HIG light-bone (off-white `#F5F5F7`) visual system with white cards,
+  liquid glass dragzone and deep soft shadows.
+- Custom frameless window: integrated off-white titlebar with linear
+  minimize / maximize-restore / close-to-tray controls and drag regions.
+- Apple segmented controls replacing the two-option dropdowns (format,
+  destination, PDF images) with a sliding white thumb on a `#E4E4E6` track.
+- Dynamic queue collapse: the glass dragzone compresses into a thin top bar
+  the moment files are queued, keeping 4+ cards visible before scrolling.
+- Native folder picker via `pick_output_folder` (dialog plugin); the settings
+  modal no longer hardcodes `C:/converted`.
+- Per-item retry for failed conversions: a failed batch immediately unlocks
+  Clear List, resets the action bar, and renders `↻ Retry` on failed cards.
+- Headless real-layout verification (`npm run test:ui-layout`) covering
+  overflow, dragzone, segmented controls, modal stacking and the unlock
+  state machine in Edge over CDP (31 checks).
+
+### Changed
+
+- Window bounds expanded from 380×520 to 440×620, still fixed-size, and now
+  frameless (`decorations: false`) with the light theme.
+- Status badges renamed to the minimal vocabulary (Done / Skip / Unsupported).
+- Focus rings and modal chrome rounded to match the input geometry; the
+  settings backdrop now stacks at z-50 with the panel at z-51.
+
 ### Fixed
 
+- Settings modal backdrop no longer slices underlying window labels and
+  dropdowns through the panel.
+- `Save Settings` text is centered inside its container with generous
+  padding instead of overflowing.
+- Conversion failure no longer leaves the queue locked: the state machine
+  unlocks immediately and retry re-enables Convert All.
 - Cancellation now kills the in-flight engine process immediately via a parked
   child-process handle; queued items are never started afterwards.
 - Engine stdout/stderr stream to temporary log files instead of RAM buffers.
