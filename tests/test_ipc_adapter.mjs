@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   cancelBatch,
+  checkSystemHealth,
   getQueueStatus,
   invokeCommand,
   isNativeTauri,
@@ -43,6 +44,12 @@ try {
   assert.throws(() => startConversionBatch({ files: [], outputDirectory: "C:/output" }), /at least one file/);
   assert.equal(logEntries.length, 5);
   assert.equal(logEntries[0][0], "[Mock IPC Call]");
+
+  const health = await checkSystemHealth();
+  assert.equal(health.status, "ok");
+  assert.equal(health.os, "browser");
+  assert.equal(health.build_architecture, "browser_mock_tauri_v2");
+  assert.equal(health.local_environment.pandoc_available, true);
 
   const futureResponse = await invokeCommand("future_command", { dryRun: true });
   assert.deepEqual(futureResponse, {

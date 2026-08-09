@@ -178,3 +178,7 @@ export function cancelBatch() {
 export function getQueueStatus() {
   return invokeCommand("get_queue_status");
 }
+
+export function checkSystemHealth() {
+  return invokeCommand("check_system_health");
+}
