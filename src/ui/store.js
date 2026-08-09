@@ -159,6 +159,25 @@ export function createStore(adapter, runtime = {}) {
     emit();
   }
 
+  /**
+   * Reset a single failed item back to Queued so the batch can be retried.
+   * Runs only while no batch is active, keeping the queue deterministic and
+   * guaranteeing the UI never stays locked after an item failure.
+   */
+  function retryItem(path) {
+    if (processing) return;
+    let changed = false;
+    items = items.map((item) => {
+      if (item.path !== path || item.itemStatus !== ITEM_STATUS.FAILED) return item;
+      changed = true;
+      return { ...item, itemStatus: ITEM_STATUS.QUEUED, error: null, outputPath: null };
+    });
+    if (!changed) return;
+    batchId = null;
+    batchStatus = "idle";
+    emit();
+  }
+
   function outputBaseFor() {
     if (options.outputMode === "custom" && options.outputFolder) {
       return options.outputFolder.replace(/[\\/]+$/, "");
@@ -334,6 +353,7 @@ export function createStore(adapter, runtime = {}) {
     setExtractForItem,
     setExtractForAll,
     clearList,
+    retryItem,
     convertAll,
     cancelPending,
   };

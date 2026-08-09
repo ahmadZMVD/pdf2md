@@ -175,6 +175,67 @@ async function main() {
   await muteStore.convertAll();
   assert.equal(noEvents.calls.starts.length, 0, "convertAll on an empty queue must not touch the adapter");
 
+  const retryAdapter = makeAdapter({
+    async startBatch(request) {
+      return {
+        batchId: 11,
+        status: "running",
+        items: request.files.map((sourcePath) => {
+          const name = String(sourcePath).split(/[\\/]/).at(-1) ?? sourcePath;
+          const stem = name.replace(/\.[^.]*$/, "") || "document";
+          return { sourcePath, outputPath: `${request.outputDirectory}/${stem}.md`, status: "queued" };
+        }),
+      };
+    },
+  });
+  const retryStore = namedStore(retryAdapter.adapter);
+  retryStore.addFiles(["C:/docs/lockup.pdf", "C:/docs/ok.txt"]);
+  await retryStore.convertAll();
+  state = retryStore.getState();
+  assert.equal(state.batchStatus, "completed");
+  assert.equal(state.items[0].itemStatus, ITEM_STATUS.COMPLETED);
+  assert.equal(state.canConvert, false, "a fully completed batch has nothing left to convert");
+
+  retryStore.retryItem("C:/docs/lockup.pdf");
+  state = retryStore.getState();
+  assert.equal(state.items[0].itemStatus, ITEM_STATUS.COMPLETED, "completed items are not retryable");
+  assert.equal(state.batchStatus, "completed", "retry on a non-failed item must not touch the batch");
+  assert.equal(state.canConvert, false);
+
+  retryStore.retryItem("C:/docs/never-added.pdf");
+  state = retryStore.getState();
+  assert.equal(state.items[0].itemStatus, ITEM_STATUS.COMPLETED);
+  assert.equal(state.items[1].itemStatus, ITEM_STATUS.COMPLETED, "unknown retry targets are ignored");
+
+  const lockedAdapter = makeAdapter({
+    async startBatch() {
+      throw new Error("engine offline");
+    },
+  });
+  const lockedStore = namedStore(lockedAdapter.adapter);
+  lockedStore.addFiles(["C:/docs/lockup.pdf"]);
+  await lockedStore.convertAll();
+  state = lockedStore.getState();
+  assert.equal(state.batchStatus, "failed");
+  assert.equal(state.items[0].itemStatus, ITEM_STATUS.FAILED);
+  assert.equal(state.processing, false, "failure must release the processing lock immediately");
+  assert.equal(state.canConvert, false);
+
+  lockedStore.retryItem("C:/docs/lockup.pdf");
+  state = lockedStore.getState();
+  assert.equal(state.items[0].itemStatus, ITEM_STATUS.QUEUED, "failed items can be retried individually");
+  assert.equal(state.batchStatus, "idle");
+  assert.equal(state.canConvert, true);
+
+  const midRetry = makeAdapter();
+  const midStore = namedStore(midRetry.adapter);
+  midStore.addFiles(["C:/docs/a.pdf", "C:/docs/b.pdf"]);
+  const midRun = midStore.convertAll();
+  midStore.retryItem("C:/docs/a.pdf");
+  assert.equal(midStore.getState().items[0].itemStatus, ITEM_STATUS.QUEUED, "retry is ignored while processing");
+  await midRun;
+  assert.equal(midStore.getState().items[0].itemStatus, ITEM_STATUS.COMPLETED, "batch finishes normally");
+
   for (const path of ["", "   ", null, 42]) {
     const edgeStore = namedStore(makeAdapter().adapter);
     edgeStore.addFiles([path]);
