@@ -1,0 +1,120 @@
+{
+  "phase": "3.1_3.2_overhaul",
+  "status": "completed",
+  "verification_status": "apple_light_bone_ui_and_frameless_shell_verified",
+  "timestamp": "2026-08-09T02:00:00Z",
+  "repository": "ahmadZMVD/pdf2md",
+  "branch": "main",
+  "head_sha": "49a5753875f980f8fc8ca31e7affb1d620cd63b7",
+  "ui_architecture_overhaul": {
+    "window_dimensions": { "width": 440, "height": 620 },
+    "fixed_bounds_enforced": true,
+    "decorations_frameless": true,
+    "theme": "Apple HIG Off-White / Bone (#F5F5F7)",
+    "liquid_glassmorphism_active": true,
+    "hover_only_drag_border": true,
+    "segmented_controls_active": true,
+    "segmented_control_fields": ["format", "destination", "pdf_images"],
+    "custom_titlebar_controls": ["minimize", "maximize_restore", "close_to_tray"],
+    "queue_collapse_visible_cards": 5,
+    "queue_collapse_thin_bar_height_px": 42,
+    "settings_modal_z_index_repaired": true,
+    "settings_modal_z_backdrop": 50,
+    "settings_modal_z_panel": 51,
+    "save_button_text_centered": true,
+    "browse_button_native_folder_picker": true,
+    "stuck_loop_state_handled": true,
+    "per_item_retry_active": true,
+    "status_badge_vocabulary": ["Queued", "Converting", "Done", "Failed", "Unsupported", "Skip"]
+  },
+  "unit_tests": {
+    "local_frontend_ipc_tests": { "total": 34, "passed": 34, "failed": 0 },
+    "local_queue_store_tests": { "total": 65, "passed": 65, "failed": 0 },
+    "python_schema_and_workflow_tests": { "total": 23, "passed": 23, "failed": 0 },
+    "frontend_production_build": { "status": "success", "duration_seconds": 1.6 },
+    "headless_real_layout_verification": { "engine": "Microsoft Edge headless over CDP", "total": 31, "passed": 31, "failed": 0, "viewport_pinned": "440x620" }
+  },
+  "cloud_build": {
+    "runner": "windows-latest",
+    "run_id": 31288828117,
+    "duration_seconds": 394,
+    "conclusion": "success",
+    "quality_job": "success",
+    "native_rust_tests_job": "success",
+    "tauri_installer_job": "success",
+    "artifact_name": "PDF-Converter-Windows-EXE",
+    "artifact_bytes": 1866240,
+    "artifact_mb": 1.78,
+    "artifact_expired": false
+  },
+  "adversarial_critique_log": [
+    {
+      "task_name": "pin headless layout surface to the fixed 440x620 window bounds",
+      "failed_attempts": 2,
+      "critique_triggered": true,
+      "root_cause": "headless chrome sizes the outer window, so innerWidth/innerHeight drifted to 492x491 and the dropzone measured only 131px",
+      "alternative_path_selected": "Emulation.setDeviceMetricsOverride pins the viewport to exactly 440x620 before every navigation",
+      "feature_degradation_percentage": 0.0
+    },
+    {
+      "task_name": "load the built frontend in a real layout engine",
+      "failed_attempts": 1,
+      "critique_triggered": true,
+      "root_cause": "ES modules are CORS-blocked from file:// URLs, so main.js never executed",
+      "alternative_path_selected": "minimal node:http static server serving dist/ over 127.0.0.1",
+      "feature_degradation_percentage": 0.0
+    },
+    {
+      "task_name": "settings modal backdrop stacking",
+      "failed_attempts": 1,
+      "critique_triggered": true,
+      "root_cause": "the backdrop had no explicit z-index so getComputedStyle reported auto",
+      "alternative_path_selected": "explicit z-index 50 backdrop with the panel at 51 inside the overlay portal",
+      "feature_degradation_percentage": 0.0
+    },
+    {
+      "task_name": "stable headless Edge session across verification runs",
+      "failed_attempts": 1,
+      "critique_triggered": true,
+      "root_cause": "a locked user-data-dir from an earlier crashed run made Edge exit with code 21",
+      "alternative_path_selected": "per-process-id profile directories plus cleanup in a finally block and gitignore pattern",
+      "feature_degradation_percentage": 0.0
+    },
+    {
+      "task_name": "query-string navigation in the populated-queue verification state",
+      "failed_attempts": 1,
+      "critique_triggered": true,
+      "root_cause": "the pageUrl helper signature changed to (port, query) but two call sites still passed the old form, navigating to an invalid URL",
+      "alternative_path_selected": "verified every call site against the new signature before re-running the suite",
+      "feature_degradation_percentage": 0.0
+    },
+    {
+      "task_name": "retryItem state-machine contract",
+      "failed_attempts": 1,
+      "critique_triggered": true,
+      "root_cause": "the first test asserted completed items reset to Queued; the designed contract only retries Failed items",
+      "alternative_path_selected": "asserted the real contract: completed items are untouched and only failed items unlock the queue",
+      "feature_degradation_percentage": 0.0
+    }
+  ],
+  "git_delivery_gate": {
+    "committed": true,
+    "pushed_to_main": true,
+    "commits": [
+      "4de95ca feat: implement apple light bone aesthetic and liquid glass dragzone",
+      "eb63e8c feat: add frameless shell, segmented controls and native folder picker",
+      "e064708 fix: unlock queue state machine with per-item retry",
+      "49a5753 docs: document the 3.1 3.2 light shell overhaul"
+    ],
+    "semantic_subject_validation": "accepted for all commits",
+    "auto_triggered_ci_passed": true,
+    "native_executable_generated": true
+  },
+  "identified_limitations": [
+    "Cargo.lock is regenerated deterministically by the CI runner because the local machine intentionally has no Rust toolchain; the committed lock file is refreshed by the workflow's generate-lockfile step.",
+    "The native folder picker returns null in browser mock mode by design; real OS dialogs only exist in the packaged Tauri shell.",
+    "npm run test:ui-layout resolves Microsoft Edge from fixed Program Files paths and is therefore a local-machine verification; the CI quality job runs the equivalent Node/Python suites on ubuntu-latest.",
+    "gh CLI must be invoked via its full path because C:\\Windows\\System32\\gh.exe shadows the real binary on PATH; an environment quirk, not a project defect.",
+    "The close button hides the window to the system tray per PROMPT 0; a true exit remains available only from the tray menu."
+  ]
+}
