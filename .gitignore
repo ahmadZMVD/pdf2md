@@ -7,6 +7,9 @@ dist/
 src-tauri/target/
 src-tauri/gen/
 
+# Headless layout verification profiles
+.tmp-edge-profile*/
+
 # Local reports and transient test output
 *.log
 __pycache__/

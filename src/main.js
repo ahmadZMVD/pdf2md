@@ -2,6 +2,7 @@ import {
   cancelBatch,
   getQueueStatus,
   isNativeTauri,
+  selectOutputFolder,
   startConversionBatch,
 } from "./services/ipc.js";
 import { ITEM_STATUS, createStore } from "./ui/store.js";
@@ -17,9 +18,9 @@ const store = createStore(adapter);
 
 const elements = {
   batchBadge: document.querySelector("#batch-badge"),
-  formatSelect: document.querySelector("#format-select"),
-  destinationSelect: document.querySelector("#destination-select"),
-  imagesSelect: document.querySelector("#images-select"),
+  formatSeg: document.querySelector("#format-seg"),
+  destinationSeg: document.querySelector("#destination-seg"),
+  imagesSeg: document.querySelector("#images-seg"),
   settingsBtn: document.querySelector("#settings-btn"),
   settingsOverlay: document.querySelector("#settings-overlay"),
   settingsClose: document.querySelector("#settings-close"),
@@ -39,6 +40,11 @@ const elements = {
   convertBtn: document.querySelector("#convert-btn"),
   completionToast: document.querySelector("#completion-toast"),
   completionText: document.querySelector("#completion-text"),
+  winMinimize: document.querySelector("#win-minimize"),
+  winMaximize: document.querySelector("#win-maximize"),
+  winClose: document.querySelector("#win-close"),
+  windowControls: document.querySelector("#window-controls"),
+  titlebar: document.querySelector(".titlebar"),
 };
 
 let toastTimer = null;
@@ -60,6 +66,15 @@ const BADGE_ICONS = {
   [ITEM_STATUS.CANCELLED]: "—",
 };
 
+const BADGE_LABELS = {
+  [ITEM_STATUS.QUEUED]: "Queued",
+  [ITEM_STATUS.PROCESSING]: "Converting",
+  [ITEM_STATUS.COMPLETED]: "Done",
+  [ITEM_STATUS.FAILED]: "Failed",
+  [ITEM_STATUS.UNSUPPORTED]: "Unsupported",
+  [ITEM_STATUS.CANCELLED]: "Skip",
+};
+
 function fileGlyphPath(ext) {
   return FILE_GLYPHS[ext] ?? FILE_GLYPHS.unknown;
 }
@@ -73,7 +88,7 @@ function rowGlyphClass(ext) {
 
 function renderQueue(state) {
   const listVisible = state.items.length > 0;
-  elements.dropzone.hidden = listVisible;
+  elements.workArea.classList.toggle("has-items", listVisible);
   elements.queuePanel.hidden = !listVisible;
 
   if (!listVisible) return;
@@ -124,10 +139,20 @@ function renderQueue(state) {
       row.append(toggle);
     }
 
+    if (item.itemStatus === ITEM_STATUS.FAILED && !state.processing) {
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "item-retry";
+      retry.textContent = "↻ Retry";
+      retry.title = "Reset this item to Queued and run the batch again";
+      retry.addEventListener("click", () => store.retryItem(item.path));
+      row.append(retry);
+    }
+
     const badge = document.createElement("span");
     badge.className = "status-badge";
     badge.dataset.status = item.itemStatus;
-    badge.innerHTML = `${BADGE_ICONS[item.itemStatus] ?? ""}<span>${item.itemStatus}</span>`;
+    badge.innerHTML = `${BADGE_ICONS[item.itemStatus] ?? ""}<span>${BADGE_LABELS[item.itemStatus] ?? item.itemStatus}</span>`;
     row.append(badge);
 
     return row;
@@ -187,16 +212,56 @@ function showCompletionToast(message, isError = false) {
   clearTimeout(toastTimer);
   elements.completionText.textContent = message;
   elements.completionToast.classList.add("is-visible");
-  toastTimer = setTimeout(() => elements.completionToast.classList.remove("is-visible"), 1900);
+  if (isError) elements.completionToast.classList.add("is-error");
+  else elements.completionToast.classList.remove("is-error");
+  toastTimer = setTimeout(() => {
+    elements.completionToast.classList.remove("is-visible");
+    elements.completionToast.classList.remove("is-error");
+  }, 1900);
 }
 
 store.subscribe(render);
 
+/* ===== Segmented controls ===== */
+
+function syncSeg(seg, value) {
+  const options = Array.from(seg.querySelectorAll(".seg-option"));
+  options.forEach((option) => {
+    const active = option.dataset.value === value;
+    option.classList.toggle("is-active", active);
+    option.setAttribute("aria-checked", String(active));
+  });
+  seg.dataset.active = String(options.findIndex((option) => option.dataset.value === value));
+}
+
+function bindSeg(seg, optionKey) {
+  const options = seg.querySelectorAll(".seg-option");
+  for (const option of options) {
+    option.addEventListener("click", () => {
+      store.setOption(optionKey, option.dataset.value);
+    });
+  }
+}
+
+store.subscribe((state) => {
+  syncSeg(elements.formatSeg, state.options.format);
+  syncSeg(elements.destinationSeg, state.options.outputMode);
+  syncSeg(elements.imagesSeg, state.options.extractImages);
+});
+
+bindSeg(elements.formatSeg, "format");
+bindSeg(elements.destinationSeg, "outputMode");
+bindSeg(elements.imagesSeg, "extractImages");
+
+/* ===== Settings modal ===== */
+
 function openSettings() {
   elements.folderInput.value = store.getState().options.outputFolder ?? "";
   elements.settingsOverlay.hidden = false;
-  elements.folderInput.focus();
-  elements.folderInput.select();
+  requestAnimationFrame(() => {
+    elements.folderInput.focus();
+    elements.folderInput.select();
+  });
 }
 
 function closeSettings() {
@@ -216,22 +281,19 @@ elements.settingsSave.addEventListener("click", () => {
   closeSettings();
 });
 
-elements.browseFolderBtn.addEventListener("click", () => {
-  elements.folderInput.value = "C:/converted";
+elements.browseFolderBtn.addEventListener("click", async () => {
+  try {
+    const picked = await selectOutputFolder();
+    if (typeof picked === "string" && picked.length > 0) {
+      elements.folderInput.value = picked;
+    }
+  } catch {
+    // A cancelled or failed native dialog keeps the previous value untouched.
+  }
   elements.folderInput.focus();
 });
 
-elements.formatSelect.addEventListener("change", () => {
-  store.setOption("format", elements.formatSelect.value);
-});
-
-elements.destinationSelect.addEventListener("change", () => {
-  store.setOption("outputMode", elements.destinationSelect.value);
-});
-
-elements.imagesSelect.addEventListener("change", () => {
-  store.setOption("extractImages", elements.imagesSelect.value);
-});
+/* ===== File browsing & drag & drop ===== */
 
 elements.browseBtn.addEventListener("click", (event) => {
   event.preventDefault();
@@ -282,6 +344,38 @@ elements.convertBtn.addEventListener("click", () => {
   }
 });
 
+/* ===== Frameless window controls (native only) ===== */
+
+async function bindWindowControls() {
+  if (!adapter.isNative) {
+    elements.windowControls.hidden = true;
+    return;
+  }
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+  const current = getCurrentWindow();
+
+  elements.winMinimize.addEventListener("click", () => {
+    current.minimize();
+  });
+
+  elements.winMaximize.addEventListener("click", async () => {
+    await current.toggleMaximize();
+    const maximized = await current.isMaximized();
+    elements.winMaximize.classList.toggle("is-maximized", maximized);
+  });
+
+  elements.winClose.addEventListener("click", () => {
+    current.close();
+  });
+
+  const maximized = await current.isMaximized();
+  elements.winMaximize.classList.toggle("is-maximized", maximized);
+}
+
+bindWindowControls();
+
+/* ===== Geometry probe ===== */
+
 function probeGeometry() {
   const root = document.documentElement;
   const ok = root.scrollWidth <= window.innerWidth && root.scrollHeight <= window.innerHeight;
@@ -313,3 +407,9 @@ function populateDemoQueue() {
 
 scheduleProbe();
 populateDemoQueue();
+
+if (!adapter.isNative) {
+  // QA seam: lets the headless layout verifier drive the real store in the
+  // browser mock runtime. Never exposed in the packaged native shell.
+  window.__pdf2mdStore = store;
+}

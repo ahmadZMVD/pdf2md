@@ -1,9 +1,9 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="color-scheme" content="dark" />
+    <meta name="color-scheme" content="light" />
     <meta
       name="description"
       content="An offline, lightweight PDF and document to Markdown converter."
@@ -13,7 +13,27 @@
   </head>
   <body class="app-shell">
     <main id="app" class="app-root">
-      <!-- ===== Top 1/3 : Options bar ===== -->
+      <!-- ===== Custom frameless titlebar ===== -->
+      <header class="titlebar" data-tauri-drag-region>
+        <div class="titlebar-drag" data-tauri-drag-region aria-hidden="true">
+          <span class="titlebar-dot" aria-hidden="true"></span>
+          <span class="titlebar-name" data-tauri-drag-region>PDF &amp; Document Converter</span>
+        </div>
+        <div class="window-controls" id="window-controls">
+          <button id="win-minimize" class="window-control" type="button" aria-label="Minimize">
+            <svg viewBox="0 0 12 12" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" aria-hidden="true"><path d="M2 6h8" /></svg>
+          </button>
+          <button id="win-maximize" class="window-control" type="button" aria-label="Maximize or restore">
+            <svg class="icon-maximize" viewBox="0 0 12 12" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><rect x="2.5" y="2.5" width="7" height="7" rx="1" /></svg>
+            <svg class="icon-restore" viewBox="0 0 12 12" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1" aria-hidden="true"><path d="M4 4V2.5h5.5V8H8M4 4H2.5v5.5H8V8" /></svg>
+          </button>
+          <button id="win-close" class="window-control is-close" type="button" aria-label="Close to tray">
+            <svg viewBox="0 0 12 12" width="10" height="10" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" /></svg>
+          </button>
+        </div>
+      </header>
+
+      <!-- ===== Top : Options bar ===== -->
       <header class="top-bar" aria-label="Conversion options">
         <div class="brand-row">
           <div class="brand-block">
@@ -28,48 +48,45 @@
                   d="M10 6.5a3.5 3.5 0 1 0 0 7 3.5 3.5 0 0 0 0-7ZM17.3 11.2l-1.8-.3a6.6 6.6 0 0 0-.5-1.2l1.1-1.5-1.9-1.9-1.5 1.1a6.6 6.6 0 0 0-1.2-.5l-.3-1.8h-2.6l-.3 1.8a6.6 6.6 0 0 0-1.2.5L5.6 5.3 3.7 7.2l1.1 1.5a6.6 6.6 0 0 0-.5 1.2l-1.8.3v2.6l1.8.3c.1.4.3.8.5 1.2l-1.1 1.5 1.9 1.9 1.5-1.1c.4.2.8.4 1.2.5l.3 1.8h2.6l.3-1.8a6.6 6.6 0 0 0 1.2-.5l1.5 1.1 1.9-1.9-1.1-1.5c.2-.4.4-.8.5-1.2l1.8-.3v-2.6Z"
                   fill="currentColor"
                 />
-                <circle cx="10" cy="10" r="2.1" fill="#121214" />
+                <circle cx="10" cy="10" r="2.1" fill="#F5F5F7" />
               </svg>
             </button>
           </div>
         </div>
 
         <div class="options-grid">
-          <label class="field">
+          <div class="field field-wide">
             <span class="field-label">Format</span>
-            <span class="select-wrap">
-              <select id="format-select" class="select">
-                <option value="md">Markdown (.md)</option>
-                <option value="txt">Plain Text (.txt)</option>
-              </select>
-            </span>
-          </label>
+            <div id="format-seg" class="seg" role="radiogroup" aria-label="Output format">
+              <button type="button" role="radio" aria-checked="true" class="seg-option is-active" data-value="md">Markdown (.md)</button>
+              <button type="button" role="radio" aria-checked="false" class="seg-option" data-value="txt">Plain Text (.txt)</button>
+              <span class="seg-thumb" aria-hidden="true"></span>
+            </div>
+          </div>
 
-          <label class="field">
+          <div class="field">
             <span class="field-label">Destination</span>
-            <span class="select-wrap">
-              <select id="destination-select" class="select">
-                <option value="auto">Beside source</option>
-                <option value="custom">Custom folder</option>
-              </select>
-            </span>
-          </label>
+            <div id="destination-seg" class="seg" role="radiogroup" aria-label="Output destination">
+              <button type="button" role="radio" aria-checked="true" class="seg-option is-active" data-value="auto">Beside source</button>
+              <button type="button" role="radio" aria-checked="false" class="seg-option" data-value="custom">Custom folder</button>
+              <span class="seg-thumb" aria-hidden="true"></span>
+            </div>
+          </div>
 
-          <label class="field">
+          <div class="field">
             <span class="field-label">PDF images</span>
-            <span class="select-wrap">
-              <select id="images-select" class="select">
-                <option value="auto">Auto (extract)</option>
-                <option value="disabled">Disabled</option>
-              </select>
-            </span>
-          </label>
+            <div id="images-seg" class="seg" role="radiogroup" aria-label="PDF image extraction">
+              <button type="button" role="radio" aria-checked="true" class="seg-option is-active" data-value="auto">Auto (extract)</button>
+              <button type="button" role="radio" aria-checked="false" class="seg-option" data-value="disabled">Disabled</button>
+              <span class="seg-thumb" aria-hidden="true"></span>
+            </div>
+          </div>
         </div>
       </header>
 
       <div class="top-divider" aria-hidden="true"></div>
 
-      <!-- ===== Bottom 2/3 : Dropzone & Queue ===== -->
+      <!-- ===== Bottom : Dropzone & Queue (dynamic collapse) ===== -->
       <section class="work-area" aria-live="polite">
         <div id="dropzone" class="dropzone" role="button" tabindex="0" aria-label="Drop or browse files">
           <div class="dropzone-glyph" aria-hidden="true">
@@ -83,8 +100,10 @@
               />
             </svg>
           </div>
-          <p class="dropzone-title">Drag &amp; drop files here</p>
-          <p class="dropzone-sub">PDF, DOCX or TXT · converted locally</p>
+          <div class="dropzone-copy">
+            <p class="dropzone-title">Drag &amp; drop files here</p>
+            <p class="dropzone-sub">PDF, DOCX or TXT · converted locally</p>
+          </div>
           <button id="browse-btn" class="ghost-button" type="button">Browse Files</button>
         </div>
 
@@ -113,7 +132,9 @@
       <section class="settings-panel" role="dialog" aria-modal="true" aria-labelledby="settings-title">
         <header class="settings-header">
           <h2 id="settings-title" class="settings-title">Settings</h2>
-          <button id="settings-close" class="icon-button" type="button" aria-label="Close settings">×</button>
+          <button id="settings-close" class="icon-button" type="button" aria-label="Close settings">
+            <svg viewBox="0 0 12 12" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" /></svg>
+          </button>
         </header>
 
         <div class="settings-body">
@@ -128,7 +149,7 @@
         </div>
 
         <footer class="settings-footer">
-          <button id="settings-save" class="primary-button" type="button">Save Settings</button>
+          <button id="settings-save" class="primary-button settings-save" type="button">Save Settings</button>
         </footer>
       </section>
     </div>
