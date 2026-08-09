@@ -1,0 +1,110 @@
+{
+  "phase": 3.1,
+  "status": "completed",
+  "verification_status": "frontend_layout_and_mock_ipc_verified",
+  "timestamp": "2026-08-09T00:15:00Z",
+  "repository": "ahmadZMVD/pdf2md",
+  "branch": "main",
+  "head_sha": "daddef74866a0892d830a6f0dc5ddc35ce15c8fd",
+  "ui_architecture": {
+    "window_dimensions": { "width": 380, "height": 520 },
+    "fixed_bounds_enforced": true,
+    "theme": "Apple HIG Deep Dark",
+    "top_options_bar_present": true,
+    "options_bar_controls": {
+      "output_format": ".md default / .txt",
+      "destination": "auto (beside source) default / custom folder",
+      "pdf_image_extraction": "auto (extract) default / disabled"
+    },
+    "settings_modal_present": true,
+    "settings_modal_dismiss": ["backdrop click", "ESC key", "close button"],
+    "dropzone_and_queue_present": true,
+    "queue_status_badges": ["Queued", "Processing", "Completed", "Failed", "Unsupported", "Cancelled"],
+    "queue_extract_images_controls": ["per-PDF checkbox", "apply-to-all checkbox"],
+    "ipc_adapter_binding_valid": true,
+    "direct_tauri_invoke_in_ui": false
+  },
+  "local_environment": {
+    "node": "v26.1.0",
+    "python": "Python 3.11.9",
+    "pandoc": "pandoc 3.10",
+    "git": "available",
+    "gh_cli": "gh 2.92.0 authenticated",
+    "rust_cargo_local": "absent by design (cloud-only)"
+  },
+  "headless_browser_layout_verification": {
+    "engine": "Microsoft Edge 151 headless over CDP (real layout engine)",
+    "state_idle": {
+      "viewport": { "width": 380, "height": 520 },
+      "scroll": { "width": 380, "height": 520 },
+      "overflow_x": 0,
+      "overflow_y": 0,
+      "shell_geometry_flag": "true",
+      "dropzone_visible": true,
+      "queue_visible": false,
+      "queue_items": 0
+    },
+    "state_populated": {
+      "viewport": { "width": 380, "height": 520 },
+      "scroll": { "width": 380, "height": 520 },
+      "overflow_x": 0,
+      "overflow_y": 0,
+      "shell_geometry_flag": "true",
+      "dropzone_visible": false,
+      "queue_visible": true,
+      "queue_items": 12,
+      "queue_internal_scrollable": true
+    }
+  },
+  "unit_tests": {
+    "local_frontend_ipc_tests": { "total": 28, "passed": 28, "failed": 0 },
+    "local_queue_store_tests": { "total": 48, "passed": 48, "failed": 0 },
+    "frontend_production_build": { "status": "success", "duration_seconds": 2.1 },
+    "pre_push_hook_suite": { "python_phase_tests": 23, "passed": 23, "failed": 0 }
+  },
+  "cloud_build": {
+    "runner": "windows-latest",
+    "run_id": 31285331511,
+    "duration_seconds": 416,
+    "active_build_seconds": 319,
+    "conclusion": "success",
+    "artifact_name": "PDF-Converter-Windows-EXE",
+    "artifact_bytes": 1802850,
+    "artifact_mb": 1.72,
+    "artifact_expired": false
+  },
+  "adversarial_critique_log": [
+    {
+      "task_name": "zero-overflow fixed-shell layout at 380x520",
+      "failed_attempts": 1,
+      "critique_triggered": false,
+      "alternative_path_selected": "internal flex min-height:0 + explicit internal queue scrollbar instead of page-level scrolling",
+      "feature_degradation_percentage": 0.0
+    },
+    {
+      "task_name": "queue store convert/cancel state machine",
+      "failed_attempts": 2,
+      "critique_triggered": false,
+      "alternative_path_selected": "store emits immutable snapshots with canConvert derived from queued items, making button state deterministic",
+      "feature_degradation_percentage": 0.0
+    }
+  ],
+  "git_delivery_gate": {
+    "committed": true,
+    "pushed_to_main": true,
+    "commits": [
+      "5c3c7f7 feat: implement HIG dark layout with settings modal and queue shell",
+      "ab36372 feat: add queue store suite and checkSystemHealth adapter binding",
+      "daddef7 docs: add phase 3.1 frontend shell protocol"
+    ],
+    "semantic_subject_validation": "accepted for all commits",
+    "auto_triggered_ci_passed": true,
+    "native_executable_generated": true
+  },
+  "identified_limitations": [
+    "The per-PDF 'Extract Images' flag is persisted in the frontend store only; the backend batch request contract (start_conversion_batch) has not yet been extended to carry it - wired in the UI, consumed in a later engine phase.",
+    "In browser mock mode, per-item progress is simulated deterministically by the preview driver; the native runtime path polls get_queue_status and reports only real engine statuses.",
+    "The 'Browse Default Path' folder picker is a preview placeholder (sets a literal path); native OS folder dialogs will be introduced with the dialog plugin integration phase.",
+    "gh CLI must be invoked via full path on this machine because C:\\Windows\\System32\\gh shadows it on PATH; not a project defect."
+  ]
+}
