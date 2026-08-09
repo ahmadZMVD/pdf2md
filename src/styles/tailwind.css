@@ -581,6 +581,14 @@
     background: #1f93ff;
   }
 
+  .primary-button.is-cancelling {
+    background: rgba(255, 69, 58, 0.92);
+  }
+
+  .primary-button.is-cancelling:hover:not(:disabled) {
+    background: #ff5449;
+  }
+
   .primary-button:active:not(:disabled),
   .secondary-button:active:not(:disabled) {
     transform: scale(0.985);
