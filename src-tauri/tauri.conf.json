@@ -15,13 +15,14 @@
       {
         "label": "main",
         "title": "PDF & Document Converter",
-        "width": 380,
-        "height": 520,
+        "width": 440,
+        "height": 620,
         "resizable": false,
         "fullscreen": false,
-        "decorations": true,
-        "theme": "Dark",
-        "center": true
+        "decorations": false,
+        "theme": "Light",
+        "center": true,
+        "shadow": true
       }
     ],
     "security": {

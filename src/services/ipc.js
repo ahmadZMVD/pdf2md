@@ -79,9 +79,19 @@ function mockExtension(sourcePath) {
   return (sourceName.includes(".") ? sourceName.slice(sourceName.lastIndexOf(".") + 1) : "").toLowerCase();
 }
 
+function browserDemoFailsBatch() {
+  return (
+    typeof globalThis.location !== "undefined" &&
+    String(globalThis.location.search).includes("demo=fail")
+  );
+}
+
 function mockStartBatch(payload) {
   const request = payload?.request;
   validateBatchRequest(request);
+  if (browserDemoFailsBatch()) {
+    throw new Error("demo engine failure");
+  }
   if (mockQueue.status === "running") {
     throw new Error("a conversion batch is already running");
   }
@@ -140,6 +150,7 @@ export function mockResponse(command, payload) {
   if (command === "start_conversion_batch") return mockStartBatch(payload);
   if (command === "cancel_batch") return mockCancelBatch();
   if (command === "get_queue_status") return clone(mockQueue);
+  if (command === "pick_output_folder") return null;
 
   return {
     status: "ok",
@@ -181,4 +192,8 @@ export function getQueueStatus() {
 
 export function checkSystemHealth() {
   return invokeCommand("check_system_health");
+}
+
+export function selectOutputFolder() {
+  return invokeCommand("pick_output_folder");
 }

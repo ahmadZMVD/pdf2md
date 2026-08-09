@@ -45,13 +45,13 @@ class Phase1Tests(unittest.TestCase):
             (ROOT / "src-tauri" / "tauri.conf.json").read_text(encoding="utf-8")
         )
         window = configuration["app"]["windows"][0]
-        self.assertEqual(window["width"], 380)
-        self.assertEqual(window["height"], 520)
+        self.assertEqual(window["width"], 440)
+        self.assertEqual(window["height"], 620)
         self.assertEqual(window["title"], "PDF & Document Converter")
         self.assertFalse(window["resizable"])
         self.assertFalse(window["fullscreen"])
-        self.assertTrue(window["decorations"])
-        self.assertEqual(window["theme"], "Dark")
+        self.assertFalse(window["decorations"], "the shell must be frameless")
+        self.assertEqual(window["theme"], "Light")
         self.assertEqual(window["label"], "main")
         self.assertTrue(configuration["app"]["withGlobalTauri"])
         for relative_path in (

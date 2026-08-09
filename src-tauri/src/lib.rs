@@ -1,6 +1,7 @@
 mod commands;
 
 use commands::conversion::{cancel_batch, get_queue_status, start_conversion_batch, ConversionQueue};
+use commands::dialog::pick_output_folder;
 use commands::health::check_system_health;
 use commands::tools::resolve_conversion_tool;
 use tauri::{
@@ -12,13 +13,15 @@ use tauri::{
 
 pub fn run() {
     let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(ConversionQueue::default())
         .invoke_handler(tauri::generate_handler![
             check_system_health,
             resolve_conversion_tool,
             start_conversion_batch,
             cancel_batch,
-            get_queue_status
+            get_queue_status,
+            pick_output_folder
         ])
         .setup(|app| {
             let show_item = MenuItem::with_id(app, "show", "Show window", true, None::<&str>)?;

@@ -6,6 +6,7 @@ import {
   invokeCommand,
   isNativeTauri,
   mockResponse,
+  selectOutputFolder,
   startConversionBatch,
 } from "../src/services/ipc.js";
 
@@ -50,6 +51,26 @@ try {
   assert.equal(health.os, "browser");
   assert.equal(health.build_architecture, "browser_mock_tauri_v2");
   assert.equal(health.local_environment.pandoc_available, true);
+
+  const pickedFolder = await selectOutputFolder();
+  assert.equal(pickedFolder, null, "browser mode has no native folder dialog and must report no selection");
+  assert.equal(mockResponse("pick_output_folder", null), null);
+
+  const folderCalls = [];
+  globalThis.window = {
+    __TAURI__: {
+      core: {
+        invoke: async (...args) => {
+          folderCalls.push(args);
+          return "C:/Users/Ahmad/Desktop/Converted";
+        },
+      },
+    },
+  };
+  const nativeFolder = await selectOutputFolder();
+  assert.equal(nativeFolder, "C:/Users/Ahmad/Desktop/Converted");
+  assert.deepEqual(folderCalls, [["pick_output_folder", undefined]]);
+  delete globalThis.window;
 
   const futureResponse = await invokeCommand("future_command", { dryRun: true });
   assert.deepEqual(futureResponse, {
